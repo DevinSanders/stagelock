@@ -1,0 +1,12 @@
+[package]
+name = "vc-tracking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+tracing.workspace = true
+vc-core = { path = "../vc-core" }
+vc-ptz = { path = "../vc-ptz" }

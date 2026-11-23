@@ -1,0 +1,52 @@
+appId: io.videocontroller.studio
+productName: VideoController
+copyright: Copyright © 2026 VideoController Contributors (MIT OR Apache-2.0)
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+
+extraResources:
+  - from: dist
+    to: web
+  - from: ../../docs/ndi-attribution.md
+    to: docs/ndi-attribution.md
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  extraResources:
+    - from: ../../target/release/vc-daemon.exe
+      to: bin/vc-daemon.exe
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+  hardenedRuntime: true
+  extraResources:
+    - from: ../../target/release/vc-daemon
+      to: bin/vc-daemon
+
+linux:
+  category: AudioVideo
+  target:
+    - AppImage
+    - deb
+  extraResources:
+    - from: ../../target/release/vc-daemon
+      to: bin/vc-daemon

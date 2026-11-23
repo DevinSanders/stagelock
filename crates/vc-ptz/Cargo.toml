@@ -1,0 +1,21 @@
+[package]
+name = "vc-ptz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+chrono.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+roxmltree.workspace = true
+serde.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+vc-core = { path = "../vc-core" }
+vc-media = { path = "../vc-media" }

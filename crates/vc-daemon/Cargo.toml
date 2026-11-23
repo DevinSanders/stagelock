@@ -1,0 +1,25 @@
+[package]
+name = "vc-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+rosc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+vc-core = { path = "../vc-core" }
+vc-integrations = { path = "../vc-integrations" }
+vc-media = { path = "../vc-media" }
+vc-ptz = { path = "../vc-ptz" }
+vc-tracking = { path = "../vc-tracking" }
+vc-vision = { path = "../vc-vision" }

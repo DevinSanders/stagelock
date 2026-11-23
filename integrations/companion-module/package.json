@@ -1,0 +1,20 @@
+{
+  "name": "companion-module-videocontroller",
+  "version": "0.1.0",
+  "description": "Bitfocus Companion & Buttons connection module for VideoController AI PTZ Studio",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@companion-module/base": "^1.11.0",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.8.3"
+  }
+}

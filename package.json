@@ -1,0 +1,12 @@
+{
+  "name": "video-controller-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0 OR MIT",
+  "packageManager": "pnpm@12.21.0",
+  "scripts": {
+    "dev:ui": "pnpm --filter @videocontroller/desktop dev",
+    "build:ui": "pnpm --filter @videocontroller/desktop build",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

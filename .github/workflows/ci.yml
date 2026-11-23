@@ -1,0 +1,49 @@
+name: CI (Windows / macOS / Linux)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust-and-ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Rust workspace unit & integration tests
+        run: cargo test --all-targets
+
+      - name: Build optimized vc-daemon release binary
+        run: cargo build --release -p vc-daemon
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS/TS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck & build Desktop + Mobile PWA UI
+        run: pnpm build:ui
+
+      - name: Build Bitfocus Companion / Buttons module
+        run: pnpm --filter companion-module-videocontroller build
