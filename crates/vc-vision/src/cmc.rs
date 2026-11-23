@@ -190,4 +190,16 @@ mod tests {
         assert!((dx - (8.0 / 192.0)).abs() < 0.02, "expected dx ~0.042, got {dx:.4}");
         assert!(dy.abs() < 0.02, "expected dy ~0.0, got {dy:.4}");
     }
+
+    #[test]
+    fn undersized_and_flat_low_texture_frames_return_zero_shift() {
+        let mut cmc = CameraMotionCompensator::new();
+        assert_eq!(cmc.estimate_shift(&[], 192, 108, &[]), (0.0, 0.0));
+        assert_eq!(cmc.estimate_shift(&[128_u8; 16], 192, 108, &[]), (0.0, 0.0));
+
+        // Perfectly uniform frames have zero variance (< 25) and must return (0.0, 0.0)
+        let flat = vec![100_u8; 192 * 108 * 4];
+        assert_eq!(cmc.estimate_shift(&flat, 192, 108, &[]), (0.0, 0.0));
+        assert_eq!(cmc.estimate_shift(&flat, 192, 108, &[]), (0.0, 0.0));
+    }
 }

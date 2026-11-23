@@ -221,4 +221,24 @@ mod tests {
         assert!(self_sim > 0.99);
         assert!(cross_sim < 0.70, "expected distinct clothing descriptors, got {cross_sim:.3}");
     }
+
+    #[test]
+    fn mismatched_empty_and_undersized_inputs_fail_safely() {
+        let empty = AppearanceEmbedding::from_raw(vec![]);
+        let dim3 = AppearanceEmbedding::from_raw(vec![1.0, 0.0, 0.0]);
+        let dim4 = AppearanceEmbedding::from_raw(vec![1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(empty.cosine_similarity(&empty), 0.0);
+        assert_eq!(dim3.cosine_similarity(&dim4), 0.0);
+
+        // Mismatched EMA blend is a safe no-op
+        let mut copy = dim3.clone();
+        copy.blend_ema(&dim4, 0.5);
+        assert_eq!(copy.values, dim3.values);
+
+        // Undersized frame yields zeroed 96-dim descriptor without panicking
+        let bbox = NormalizedRect { x: 0.1, y: 0.1, width: 0.5, height: 0.5 };
+        let emb = extract_spatial_hsv_descriptor(&[0_u8; 8], 160, 120, &bbox);
+        assert_eq!(emb.values.len(), 96);
+        assert!(emb.values.iter().all(|&v| v == 0.0));
+    }
 }

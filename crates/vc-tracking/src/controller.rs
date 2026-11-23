@@ -299,4 +299,56 @@ mod tests {
         assert!(cams[0].cam_pan > 0.10);
         assert!(cams[1].cam_pan < -0.10);
     }
+
+    #[test]
+    fn manual_override_suppresses_tracking_ptz_for_full_hold_duration() {
+        let cam = SimCamera::new();
+        let mut ctrl = CameraTrackingController::new(CameraCalibration::default());
+        let mut cfg = FramingConfig::default();
+        cfg.auto_track_enabled = true;
+
+        let subj = cam.observe_speaker(0.45, 0.0, 0.45);
+        ctrl.notify_manual_override(1.0);
+
+        for _ in 0..25 {
+            let out = ctrl.tick(&cfg, TrackingState::Locked, Some(&subj), 0.85, TallyState::Off, 0.033);
+            assert!(!out.should_send_ptz, "manual override must not fight operator joystick");
+            assert_eq!(out.ptz_velocity.pan, 0.0);
+        }
+
+        // Once 1.0s expires, tracking resumes driving toward speaker
+        let mut resumed = false;
+        for _ in 0..20 {
+            let out = ctrl.tick(&cfg, TrackingState::Locked, Some(&subj), 0.85, TallyState::Off, 0.05);
+            if out.should_send_ptz && out.ptz_velocity.pan > 0.01 {
+                resumed = true;
+                break;
+            }
+        }
+        assert!(resumed, "auto-tracking should resume after manual override expires");
+    }
+
+    #[test]
+    fn disabling_auto_track_feathers_motion_to_zero_and_stops_sending() {
+        let cam = SimCamera::new();
+        let mut ctrl = CameraTrackingController::new(CameraCalibration::default());
+        let mut cfg = FramingConfig::default();
+        cfg.auto_track_enabled = true;
+        let subj = cam.observe_speaker(0.40, 0.0, 0.45);
+
+        // Ramp into active motion
+        for _ in 0..15 {
+            ctrl.tick(&cfg, TrackingState::Locked, Some(&subj), 0.85, TallyState::Off, 0.033);
+        }
+
+        // Disable auto-track: must decelerate cleanly to zero and stop sending commands
+        cfg.auto_track_enabled = false;
+        let mut last = ctrl.tick(&cfg, TrackingState::Idle, Some(&subj), 0.85, TallyState::Off, 0.033);
+        for _ in 0..45 {
+            last = ctrl.tick(&cfg, TrackingState::Idle, Some(&subj), 0.85, TallyState::Off, 0.033);
+        }
+        assert_eq!(last.ptz_velocity.pan, 0.0);
+        assert_eq!(last.ptz_velocity.tilt, 0.0);
+        assert!(!last.should_send_ptz, "idle controller must stop flooding PTZ bus");
+    }
 }

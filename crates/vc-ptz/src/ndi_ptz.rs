@@ -122,3 +122,30 @@ impl PtzDriver for NdiPtzDriver {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn returns_error_when_camera_worker_missing_or_without_ndi_receiver() {
+        let media = MediaEngine::new();
+        let missing_id = CameraId::new_v4();
+        let driver = NdiPtzDriver::new(missing_id, media.clone());
+
+        let err = driver.pan_tilt_speed(0.5, 0.0).await.unwrap_err();
+        assert!(err.to_string().contains("not running"));
+        assert!(driver.zoom_speed(0.3).await.is_err());
+        assert!(driver.focus(FocusCommand::OnePush).await.is_err());
+        assert!(driver.recall_preset(1).await.is_err());
+
+        // Start a non-NDI (TestPattern) camera and verify NdiPtzDriver still rejects cleanly
+        let cam = vc_core::CameraConfig::new_demo("Non-NDI Cam", "smpte");
+        let cam_id = cam.id;
+        media.start_or_restart_camera(cam).await.unwrap();
+        let non_ndi_driver = NdiPtzDriver::new(cam_id, media.clone());
+        let err2 = non_ndi_driver.stop().await.unwrap_err();
+        assert!(err2.to_string().contains("active NDI receiver"));
+        media.stop_camera(cam_id).await;
+    }
+}

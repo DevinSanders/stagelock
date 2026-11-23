@@ -89,4 +89,14 @@ mod tests {
         }
         assert!(out > 0.77, "expected responsive tracking to 0.80, got {out:.4}");
     }
+
+    #[test]
+    fn zero_or_negative_dt_clamps_without_nan_or_inf() {
+        let mut f = OneEuroFilter::new(0.0, -5.0, 0.0);
+        let v0 = f.filter(0.5, 0.0);
+        let v1 = f.filter(0.7, 0.0);
+        let v2 = f.filter(0.2, -1.0);
+        assert!(v0.is_finite() && v1.is_finite() && v2.is_finite());
+        assert!(f.velocity().is_finite());
+    }
 }

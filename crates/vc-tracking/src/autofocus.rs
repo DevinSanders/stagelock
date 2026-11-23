@@ -342,4 +342,59 @@ mod tests {
             "hill-climb should locate peak near 3.0 and stop cleanly (stopped at {focus_pos:.2})"
         );
     }
+
+    #[test]
+    fn hill_climb_hard_timeout_stops_focus_motor_on_flat_blur() {
+        let mut af = AutoFocusController::new();
+        let mut saw_stop = false;
+        let mut entered_cooldown = false;
+        // Permanently flat low sharpness (e.g., lens cap or unfocusable scene)
+        for _ in 0..80 {
+            let out = af.update(
+                true,
+                AutoFocusStrategy::ActiveHillClimb,
+                0.15,
+                true,
+                PtzVelocity::default(),
+                0.0,
+                0.05,
+            );
+            if out.command == Some(FocusCommand::Stop) {
+                saw_stop = true;
+                entered_cooldown = out.state == FocusMonitorState::Cooldown;
+                break;
+            }
+        }
+        assert!(saw_stop, "hard 2.2s timeout must emit FocusCommand::Stop");
+        assert!(entered_cooldown, "timed-out hill-climb must enter Cooldown");
+    }
+
+    #[test]
+    fn losing_lock_or_disabling_af_immediately_stops_active_hill_climb() {
+        let mut af = AutoFocusController::new();
+        // Drive into active hill-climb
+        for _ in 0..15 {
+            af.update(
+                true,
+                AutoFocusStrategy::ActiveHillClimb,
+                0.15,
+                true,
+                PtzVelocity::default(),
+                0.0,
+                0.05,
+            );
+        }
+        // Now subject lock is lost mid-focus -> must emit Stop immediately
+        let out = af.update(
+            true,
+            AutoFocusStrategy::ActiveHillClimb,
+            0.15,
+            false,
+            PtzVelocity::default(),
+            0.0,
+            0.05,
+        );
+        assert_eq!(out.command, Some(FocusCommand::Stop));
+        assert_eq!(out.state, FocusMonitorState::Sharp);
+    }
 }

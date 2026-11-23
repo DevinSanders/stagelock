@@ -226,4 +226,12 @@ mod tests {
         assert_eq!(PanasonicAwDriver::encode_aw_speed(1.0), 99);
         assert_eq!(PanasonicAwDriver::encode_aw_speed(-1.0), 1);
     }
+
+    #[test]
+    fn panasonic_aw_extreme_and_deadband_speeds_clamp_safely() {
+        assert_eq!(PanasonicAwDriver::encode_aw_speed(50.0), 99);
+        assert_eq!(PanasonicAwDriver::encode_aw_speed(-50.0), 1);
+        assert_eq!(PanasonicAwDriver::encode_aw_speed(0.01), 50);
+        assert_eq!(PanasonicAwDriver::encode_aw_speed(-0.015), 50);
+    }
 }

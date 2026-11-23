@@ -23,3 +23,8 @@ vc-media = { path = "../vc-media" }
 vc-ptz = { path = "../vc-ptz" }
 vc-tracking = { path = "../vc-tracking" }
 vc-vision = { path = "../vc-vision" }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3.19"
+tower = { version = "0.5", features = ["util"] }

@@ -593,4 +593,62 @@ mod tests {
         assert_eq!(s1.subjects.len(), 1);
         assert_eq!(s1.subjects[0].track_id, tid, "CMC should keep unbroken track ID during fast pan");
     }
+
+    #[test]
+    fn lock_unknown_id_and_empty_point_return_none() {
+        let mut tracker = BotSortTracker::new();
+        let emb = make_emb(1, 0.02);
+        let _ = tracker.step(vec![det(0.25, 0.50, emb)], &[None], 0.0, 0.0, true);
+
+        assert!(tracker.lock_track(9999).is_none());
+        // Click far outside person at x=0.25
+        assert!(tracker.lock_at_point(0.90, 0.90).is_none());
+    }
+
+    #[test]
+    fn prolonged_occlusion_expires_into_searching_without_hijacking_bystander() {
+        let mut tracker = BotSortTracker::new();
+        let emb_a = make_emb(0, 0.01);
+        let emb_b = make_emb(12, 0.01);
+
+        let s0 = tracker.step(
+            vec![det(0.25, 0.50, emb_a), det(0.75, 0.50, emb_b.clone())],
+            &[None, None],
+            0.0,
+            0.0,
+            true,
+        );
+        let id_a = s0.subjects.iter().find(|s| s.bbox.x < 0.40).unwrap().track_id;
+        assert_eq!(tracker.lock_track(id_a), Some(id_a));
+
+        // Exceed occlusion_hold_frames (75) with only bystander B visible
+        let mut last = s0;
+        for _ in 0..80 {
+            last = tracker.step(vec![det(0.75, 0.50, emb_b.clone())], &[None], 0.0, 0.0, true);
+            assert!(last.locked_track_id.is_none(), "must never hijack bystander B");
+        }
+        assert_eq!(
+            last.tracking_state,
+            TrackingState::Searching,
+            "after occlusion hold expires, tracker must transition to Searching"
+        );
+    }
+
+    #[test]
+    fn empty_detections_and_noise_below_threshold_spawn_no_tracks() {
+        let mut tracker = BotSortTracker::new();
+        let noise = RawDetection {
+            bbox: NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.3 },
+            confidence: 0.05, // below 0.15 cutoff
+            keypoints: Vec::new(),
+            embedding: None,
+        };
+        let snap1 = tracker.step(vec![noise], &[None], 0.0, 0.0, true);
+        assert!(snap1.subjects.is_empty());
+        assert_eq!(snap1.tracking_state, TrackingState::Searching);
+
+        let snap2 = tracker.step(Vec::new(), &[], 0.0, 0.0, false);
+        assert!(snap2.subjects.is_empty());
+        assert_eq!(snap2.tracking_state, TrackingState::Idle);
+    }
 }

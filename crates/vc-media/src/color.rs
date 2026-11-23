@@ -119,4 +119,41 @@ mod tests {
         apply_color_adjustments_bgra(&mut frame, 3, 3, &adj);
         assert!(frame[center] > 160, "unsharp mask should boost bright peak");
     }
+
+    #[test]
+    fn undersized_or_empty_buffer_does_not_panic() {
+        let adj = ColorAdjustments {
+            exposure: 1.2,
+            sharpness: 2.0,
+            saturation: 1.5,
+            ..Default::default()
+        };
+        let mut empty: Vec<u8> = Vec::new();
+        apply_color_adjustments_bgra(&mut empty, 64, 64, &adj);
+        assert!(empty.is_empty());
+
+        // Truncated buffer smaller than width * height * 4 must safely skip unsharp mask
+        let mut short = vec![100_u8; 10];
+        apply_color_adjustments_bgra(&mut short, 16, 16, &adj);
+        assert_eq!(short.len(), 10);
+    }
+
+    #[test]
+    fn extreme_out_of_range_adjustments_clamp_safely() {
+        let mut frame = vec![128, 64, 200, 255].repeat(9);
+        let extreme = ColorAdjustments {
+            white_balance_temp: 99.0,
+            white_balance_tint: -99.0,
+            exposure: 50.0,
+            contrast: 50.0,
+            saturation: -20.0,
+            sharpness: 50.0,
+            brightness: 25.0,
+        };
+        apply_color_adjustments_bgra(&mut frame, 3, 3, &extreme);
+        // Alpha channel remains untouched and RGB saturates cleanly at 255
+        for px in frame.chunks_exact(4) {
+            assert_eq!(px[3], 255);
+        }
+    }
 }

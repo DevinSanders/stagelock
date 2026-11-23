@@ -66,3 +66,23 @@ impl Default for BitfocusButtonsClient {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn post_control_returns_error_when_disabled() {
+        let client = BitfocusButtonsClient::new();
+        let cfg = BitfocusButtonsConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let req = ButtonsTriggerRequest {
+            endpoint: "/control/cuelist/v1/go".into(),
+            payload: serde_json::json!({}),
+        };
+        let err = client.post_control(&cfg, &req).await.unwrap_err();
+        assert!(err.to_string().contains("disabled"));
+    }
+}

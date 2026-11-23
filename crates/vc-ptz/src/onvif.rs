@@ -641,4 +641,28 @@ mod tests {
         </GetStreamUriResponse></Body></Envelope>"#;
         assert_eq!(parse_stream_uri(uri_xml).as_deref(), Some("rtsp://192.168.1.88:554/1"));
     }
+
+    #[test]
+    fn malformed_xml_and_missing_tags_fail_safely_without_panic() {
+        assert!(parse_ws_discovery_response("<unclosed><xml").is_empty());
+        assert!(parse_ws_discovery_response("<Envelope><Body/></Envelope>").is_empty());
+        // ProbeMatch with non-http XAddr is ignored cleanly
+        let bad_xaddr = "<Envelope><ProbeMatch><XAddrs>ftp://bad-scheme</XAddrs></ProbeMatch></Envelope>";
+        assert!(parse_ws_discovery_response(bad_xaddr).is_empty());
+
+        assert!(parse_primary_profile("<broken").is_none());
+        assert!(parse_primary_profile("<Envelope><Profiles/></Envelope>").is_none());
+        assert!(parse_stream_uri("<broken").is_none());
+        assert!(parse_stream_uri("<Envelope><MediaUri/></Envelope>").is_none());
+
+        let (media, ptz, img) = parse_capabilities_xaddrs("<not-xml", "10.0.0.5", 8080);
+        assert_eq!(media, "http://10.0.0.5:8080/onvif/media_service");
+        assert_eq!(ptz, "http://10.0.0.5:8080/onvif/ptz_service");
+        assert!(img.is_none());
+    }
+
+    #[test]
+    fn empty_username_returns_empty_wsse_header() {
+        assert!(build_wsse_header("", "secret").is_empty());
+    }
 }

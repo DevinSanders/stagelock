@@ -14,7 +14,6 @@ reqwest.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 sha1.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 vc-core = { path = "../vc-core" }

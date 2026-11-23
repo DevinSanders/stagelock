@@ -436,4 +436,40 @@ Device found:
         assert_eq!(parsed[1].device_id, r"\\?\usb#vid_534d");
         assert_eq!(parsed[1].max_width, 1920);
     }
+
+    #[test]
+    fn malformed_or_empty_device_monitor_output_returns_empty() {
+        assert!(parse_device_monitor_output("").is_empty());
+        assert!(parse_device_monitor_output("ERROR: failed probing\nDevice found:\n").is_empty());
+        // Device with non-numeric caps falls back safely to default 1280x720
+        let partial = "Device found:\n\tname  : WeirdCam\n\tcaps : width=abc, height=xyz\n";
+        let devs = parse_device_monitor_output(partial);
+        assert_eq!(devs.len(), 1);
+        assert_eq!(devs[0].device_id, "WeirdCam");
+        assert_eq!(devs[0].max_width, 1280);
+        assert_eq!(devs[0].max_height, 720);
+    }
+
+    #[test]
+    fn build_bgra_capture_pipeline_rejects_non_gstreamer_sources() {
+        let test_src = VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 640,
+            height: 360,
+            fps: 30,
+        };
+        assert!(
+            build_bgra_capture_pipeline(&test_src, &HardwareAccelBackend::SoftwareCpu, 640, 360, 30)
+                .is_err()
+        );
+
+        let ndi_src = VideoSourceConfig::Ndi {
+            source_name: "STUDIO (CAM 1)".into(),
+            low_bandwidth: false,
+        };
+        assert!(
+            build_bgra_capture_pipeline(&ndi_src, &HardwareAccelBackend::NvidiaNvcodec, 1280, 720, 30)
+                .is_err()
+        );
+    }
 }

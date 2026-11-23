@@ -330,7 +330,10 @@ impl VmixClient {
 
         let mut reader = BufReader::new(read_half);
         let mut line = String::new();
-        let mut xml_poll = tokio::time::interval(Duration::from_secs(5));
+        let mut xml_poll = tokio::time::interval_at(
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            Duration::from_secs(5),
+        );
 
         loop {
             tokio::select! {
@@ -339,7 +342,10 @@ impl VmixClient {
                     if !cur.enabled || cur.host != initial_cfg.host || cur.tcp_port != initial_cfg.tcp_port {
                         return Ok(());
                     }
-                    let _ = self.refresh_xml_state().await;
+                    let refresher = self.clone();
+                    tokio::spawn(async move {
+                        let _ = refresher.refresh_xml_state().await;
+                    });
                 }
                 res = reader.read_line(&mut line) => {
                     let bytes = res?;
@@ -450,5 +456,52 @@ mod tests {
         assert_eq!(received.active_input, Some(2));
         assert_eq!(received.preview_input, Some(1));
         handle.abort();
+    }
+
+    #[test]
+    fn rejects_malformed_xml_non_tally_lines_and_disconnected_refs() {
+        assert!(parse_vmix_tally_line("ACTS OK Recording 1").is_none());
+        assert!(parse_vmix_tally_line("").is_none());
+        assert!(parse_vmix_tally_line("GARBAGE").is_none());
+
+        let cfg = VmixConfig::default();
+        assert!(parse_vmix_xml_state("<vmix><unclosed", &cfg).is_err());
+
+        // Disconnected or empty/unknown input refs always resolve safely to TallyState::Off
+        let disconnected = VmixRuntimeState {
+            connected: false,
+            tally_string: "12".into(),
+            ..Default::default()
+        };
+        assert_eq!(resolve_camera_tally("1", &disconnected), TallyState::Off);
+
+        let connected = VmixRuntimeState {
+            connected: true,
+            tally_string: "12".into(),
+            ..Default::default()
+        };
+        assert_eq!(resolve_camera_tally("", &connected), TallyState::Off);
+        assert_eq!(resolve_camera_tally("   ", &connected), TallyState::Off);
+        assert_eq!(resolve_camera_tally("999", &connected), TallyState::Off);
+        assert_eq!(resolve_camera_tally("Nonexistent Title", &connected), TallyState::Off);
+    }
+
+    #[tokio::test]
+    async fn execute_returns_error_when_vmix_integration_disabled() {
+        let client = VmixClient::new(VmixConfig {
+            enabled: false,
+            ..Default::default()
+        });
+        let err = client
+            .execute(&VmixSwitchCommand {
+                function: "Cut".into(),
+                input: Some("1".into()),
+                value: None,
+                duration_ms: None,
+                mix: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("disabled"));
     }
 }

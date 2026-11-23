@@ -292,4 +292,24 @@ mod tests {
         assert_eq!(&pkt[0..8], &[0x01, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x2A]);
         assert_eq!(&pkt[8..], &cmd[..]);
     }
+
+    #[test]
+    fn extreme_speeds_and_preset_slots_clamp_within_visca_bounds() {
+        let pt = ViscaIpDriver::encode_pan_tilt(99.0, -99.0);
+        assert_eq!(pt[4], 0x18, "pan speed must clamp at VISCA max 0x18");
+        assert_eq!(pt[5], 0x14, "tilt speed must clamp at VISCA max 0x14");
+
+        let z_in = ViscaIpDriver::encode_zoom(42.0);
+        assert_eq!(z_in[4], 0x27, "tele zoom speed must clamp at 7");
+        let z_out = ViscaIpDriver::encode_zoom(-42.0);
+        assert_eq!(z_out[4], 0x37, "wide zoom speed must clamp at 7");
+
+        let preset = ViscaIpDriver::encode_preset(true, 255);
+        assert_eq!(preset[5], 0x7F, "preset slot must clamp at VISCA 7-bit max 0x7F");
+
+        let sharp = ViscaIpDriver::encode_imaging(ImagingCommand::Sharpness { level: 5.0 });
+        assert_eq!(sharp[0][7], 0x0F, "sharpness nibble must clamp to 0x0F");
+        let sharp_low = ViscaIpDriver::encode_imaging(ImagingCommand::Sharpness { level: -5.0 });
+        assert_eq!(sharp_low[0][7], 0x00, "negative sharpness must clamp to 0x00");
+    }
 }

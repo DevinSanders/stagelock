@@ -186,6 +186,26 @@ async fn main() -> Result<()> {
         run_osc_listener(osc_port, osc_state).await;
     });
 
+    let app = build_router(state);
+
+    let bind_host = if let Ok(env_host) = std::env::var("VC_BIND_ADDR") {
+        env_host
+    } else if lan_access_enabled {
+        "0.0.0.0".to_string()
+    } else {
+        cfg_snapshot.server.bind_addr.clone()
+    };
+
+    let bind_addr: SocketAddr = format!("{bind_host}:{http_port}").parse()?;
+
+    info!(addr = %bind_addr, osc_port, lan_urls = ?detect_lan_ipv4_addresses(), "VideoController daemon listening");
+    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+fn build_router(state: AppState) -> Router {
+    let web_ui_dir = state.web_ui_dir.clone();
     let mut app = Router::new()
         .route("/api/v1/health", get(health))
         .route("/api/v1/capabilities", get(get_capabilities))
@@ -219,7 +239,10 @@ async fn main() -> Result<()> {
         .route("/api/v1/integrations/streamdeck", get(get_streamdeck_status))
         .route("/api/v1/integrations/streamdeck/config", put(update_streamdeck_config))
         .route("/api/v1/integrations/streamdeck/trigger", post(trigger_streamdeck_action))
-        .route("/api/v1/integrations/buttons/config", get(get_buttons_config).put(update_buttons_config))
+        .route(
+            "/api/v1/integrations/buttons/config",
+            get(get_buttons_config).put(update_buttons_config),
+        )
         .route("/api/v1/integrations/buttons/trigger", post(trigger_buttons_control))
         .route("/ws/telemetry", get(ws_telemetry))
         .layer(CorsLayer::permissive())
@@ -233,20 +256,7 @@ async fn main() -> Result<()> {
         warn!("Built PWA UI directory (apps/desktop/dist) not found; run `pnpm build:ui` to enable LAN Remote PWA");
     }
 
-    let bind_host = if let Ok(env_host) = std::env::var("VC_BIND_ADDR") {
-        env_host
-    } else if lan_access_enabled {
-        "0.0.0.0".to_string()
-    } else {
-        cfg_snapshot.server.bind_addr.clone()
-    };
-
-    let bind_addr: SocketAddr = format!("{bind_host}:{http_port}").parse()?;
-
-    info!(addr = %bind_addr, osc_port, lan_urls = ?detect_lan_ipv4_addresses(), "VideoController daemon listening");
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    axum::serve(listener, app).await?;
-    Ok(())
+    app
 }
 
 #[derive(Serialize)]
@@ -1020,5 +1030,183 @@ async fn run_osc_listener(port: u16, state: AppState) {
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    use vc_core::PtzConfig;
+
+    fn test_app() -> (Router, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::load_or_create(dir.path().join("test.db")).unwrap();
+        let media = MediaEngine::new();
+        let ptz = PtzManager::new(media.clone());
+        let tracking = TrackingSupervisor::new(store.clone(), media.clone(), ptz.clone());
+        let vmix = VmixClient::new(VmixConfig::default());
+        let buttons = BitfocusButtonsClient::new();
+        let streamdeck = StreamDeckController::new();
+        let state = AppState {
+            store,
+            media,
+            ptz,
+            tracking,
+            vmix,
+            buttons,
+            streamdeck,
+            http_port: 8765,
+            osc_port: 9000,
+            lan_access_enabled: true,
+            web_ui_dir: None,
+        };
+        (build_router(state), dir)
+    }
+
+    #[tokio::test]
+    async fn health_and_camera_crud_happy_and_404_paths() {
+        let (app, _dir) = test_app();
+
+        // Health happy path
+        let res = app
+            .clone()
+            .oneshot(Request::get("/api/v1/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert!(String::from_utf8_lossy(&body).contains("\"status\":\"ok\""));
+
+        // 404 failure paths for missing camera UUID across endpoints
+        let missing = Uuid::new_v4();
+        for (method, uri, payload) in [
+            ("GET", format!("/api/v1/cameras/{missing}"), None),
+            ("DELETE", format!("/api/v1/cameras/{missing}"), None),
+            ("GET", format!("/api/v1/cameras/{missing}/snapshot.jpg"), None),
+            ("PUT", format!("/api/v1/cameras/{missing}/framing"), Some(serde_json::to_string(&FramingConfig::default()).unwrap())),
+            ("PUT", format!("/api/v1/cameras/{missing}/color"), Some(serde_json::to_string(&ColorAdjustments::default()).unwrap())),
+            ("POST", format!("/api/v1/cameras/{missing}/tracking/select"), Some("{\"track_id\":1}".to_string())),
+        ] {
+            let mut builder = Request::builder().method(method).uri(&uri);
+            let req = if let Some(json) = payload {
+                builder = builder.header(header::CONTENT_TYPE, "application/json");
+                builder.body(Body::from(json)).unwrap()
+            } else {
+                builder.body(Body::empty()).unwrap()
+            };
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND, "expected 404 for {method} {uri}");
+        }
+
+        // Create -> Get -> Delete roundtrip (enabled: false avoids spawning capture worker)
+        let mut cam = CameraConfig::new_demo("API Test Cam", "smpte");
+        cam.enabled = false;
+        let create_req = Request::post("/api/v1/cameras")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_string(&cam).unwrap()))
+            .unwrap();
+        let created = app.clone().oneshot(create_req).await.unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+
+        let fetched = app
+            .clone()
+            .oneshot(Request::get(format!("/api/v1/cameras/{}", cam.id)).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(fetched.status(), StatusCode::OK);
+
+        let deleted = app
+            .clone()
+            .oneshot(Request::delete(format!("/api/v1/cameras/{}", cam.id)).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+
+        let after_delete = app
+            .clone()
+            .oneshot(Request::get(format!("/api/v1/cameras/{}", cam.id)).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(after_delete.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn bad_requests_and_disabled_integrations_return_proper_error_codes() {
+        let (app, _dir) = test_app();
+
+        // Invalid UUID path parameter -> 400 Bad Request
+        let bad_id = app
+            .clone()
+            .oneshot(Request::get("/api/v1/cameras/not-a-valid-uuid").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(bad_id.status(), StatusCode::BAD_REQUEST);
+
+        // Malformed JSON payload -> 400 Bad Request
+        let bad_json = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/cameras")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{broken_json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_json.status(), StatusCode::BAD_REQUEST);
+
+        // Calibrating a camera with PtzConfig::None -> 400 Bad Request
+        let mut cam = CameraConfig::new_demo("No-PTZ Cam", "smpte");
+        cam.enabled = false;
+        cam.ptz = PtzConfig::None;
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/cameras")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&cam).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cal_resp = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/api/v1/cameras/{}/ptz/calibrate", cam.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cal_resp.status(), StatusCode::BAD_REQUEST);
+
+        // Disabled vMix command -> 502 Bad Gateway
+        let vmix_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/integrations/vmix/command")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{\"function\":\"Cut\",\"input\":\"1\"}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(vmix_resp.status(), StatusCode::BAD_GATEWAY);
+
+        // Disabled Bitfocus Buttons trigger -> 502 Bad Gateway
+        let buttons_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/integrations/buttons/trigger")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{\"endpoint\":\"/control/cuelist/v1/go\",\"payload\":{}}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(buttons_resp.status(), StatusCode::BAD_GATEWAY);
     }
 }

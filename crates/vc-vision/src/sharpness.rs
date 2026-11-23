@@ -157,4 +157,18 @@ mod tests {
             "expected sharp ({s_sharp:.3}) >> blurred ({s_blur:.3})"
         );
     }
+
+    #[test]
+    fn undersized_or_degenerate_frames_return_zero_without_panic() {
+        let bbox = NormalizedRect { x: 0.2, y: 0.1, width: 0.5, height: 0.5 };
+        assert_eq!(compute_subject_face_sharpness(&[], 128, 128, &bbox, &[]), 0.0);
+        assert_eq!(compute_subject_face_sharpness(&[0; 64], 4, 4, &bbox, &[]), 0.0);
+        assert_eq!(compute_subject_face_sharpness(&[0; 16], 128, 128, &bbox, &[]), 0.0);
+
+        // Out-of-bounds bbox on valid frame still clamps safely and produces finite score
+        let valid = vec![128_u8; 32 * 32 * 4];
+        let oob = NormalizedRect { x: 2.0, y: 2.0, width: 5.0, height: 5.0 };
+        let s = compute_subject_face_sharpness(&valid, 32, 32, &oob, &[]);
+        assert!(s.is_finite() && (0.0..=1.0).contains(&s));
+    }
 }
