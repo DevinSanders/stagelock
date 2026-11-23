@@ -3,8 +3,10 @@ name: Release Installers
 on:
   push:
     tags:
-      - "v*.*.*"
-  workflow_dispatch:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: read
 
 jobs:
   build-release:
@@ -26,6 +28,7 @@ jobs:
             artifact_glob: |
               apps/desktop/release/*.AppImage
               apps/desktop/release/*.deb
+              release-extras/*.tar.gz
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -33,6 +36,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Rust tests
+        run: cargo test --all-targets
 
       - name: Build vc-daemon (release)
         run: cargo build --release -p vc-daemon
@@ -46,6 +55,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install & build UI + Companion module
         run: |
@@ -58,15 +68,53 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: ${{ matrix.package_cmd }}
 
-      - name: Upload ${{ matrix.platform }} installers & Companion module
+      - name: Archive Bitfocus Companion module (Linux runner)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p release-extras
+          tar -czf release-extras/videocontroller-companion-module-${{ github.ref_name }}.tar.gz \
+            -C integrations/companion-module dist companion package.json
+
+      - name: Upload ${{ matrix.platform }} release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: videocontroller-${{ matrix.platform }}-installers
+          if-no-files-found: error
           path: |
             ${{ matrix.artifact_glob }}
-            integrations/companion-module/dist/
-            integrations/companion-module/companion/
-            integrations/companion-module/package.json
-            LICENSE-APACHE
-            LICENSE-MIT
-            docs/ndi-attribution.md
+
+  publish-release:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all platform installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release for ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s globstar nullglob
+          ASSETS=(dist-artifacts/**/*)
+          FILES=()
+          for f in "${ASSETS[@]}"; do
+            if [ -f "$f" ]; then
+              FILES+=("$f")
+            fi
+          done
+          EXTRA_FLAGS=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            EXTRA_FLAGS+=(--prerelease)
+          fi
+          gh release create "${GITHUB_REF_NAME}" "${FILES[@]}" \
+            "${EXTRA_FLAGS[@]}" \
+            --title "VideoController ${GITHUB_REF_NAME}" \
+            --generate-notes

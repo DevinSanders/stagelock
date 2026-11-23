@@ -34,19 +34,23 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
 
 ---
 
-## Workspace Architecture
+## Workspace & Repository Structure
 
-| Crate / App | Responsibility |
+| Path | Responsibility |
 | :--- | :--- |
-| `crates/vc-core` | Shared domain models, UUID camera configs, telemetry schemas, embedded SQLite (`videocontroller.db`) store with versioned migrations & legacy `config.json` auto-import |
-| `crates/vc-media` | Multi-GPU prober, GStreamer live ingest (`gst-native` or runtime bridge), NDI® 6 dynamic loader, color & Unsharp-Mask pipeline |
-| `crates/vc-vision` | ONNX Runtime (`ort` v2) wrapper (`RTMDet`, `RTMPose`, `OSNet`), spatial HSV fallback, CMC, BoT-SORT, identity gallery, face-ROI sharpness |
-| `crates/vc-tracking` | One-Euro filter, anatomical broadcast framing solver, 5-stage smooth PTZ controller, 2-tier motion-gated auto-focus |
-| `crates/vc-ptz` | Unified PTZ/Imaging trait + VISCA-IP, ONVIF S/T + WS-Discovery, NDI PTZ, Canon XC, Panasonic AW, Mock PTZ |
-| `crates/vc-integrations` | vMix TCP Tally + HTTP switching client, Bitfocus Buttons Control API client, Stream Deck key/dial router |
-| `crates/vc-daemon` | Headless Rust control & media server (REST + 30 Hz WebSocket + MJPEG + PWA static server + 30 Hz tracking supervisor + OSC `:9000`) |
-| `apps/desktop` | Electron + React + TypeScript multiview studio & responsive Mobile/Tablet Remote PWA |
-| `integrations/companion-module` | First-party Bitfocus Companion / Buttons module (`@companion-module/base`) |
+| [`crates/`](crates/README.md) | Rust workspace containing all 7 headless core, media, AI, PTZ, integration, and daemon crates |
+| [`crates/vc-core`](crates/vc-core/README.md) | Shared domain models, UUID camera configs, telemetry schemas, embedded SQLite (`videocontroller.db`) store with versioned migrations & legacy `config.json` auto-import |
+| [`crates/vc-media`](crates/vc-media/README.md) | Multi-GPU prober, GStreamer live ingest (`gst-native` or runtime bridge), NDI® 6 dynamic loader, color & Unsharp-Mask pipeline |
+| [`crates/vc-vision`](crates/vc-vision/README.md) | ONNX Runtime (`ort` v2) wrapper (`RTMDet`, `RTMPose`, `OSNet`), spatial HSV fallback, CMC, BoT-SORT, identity gallery, face-ROI sharpness |
+| [`crates/vc-tracking`](crates/vc-tracking/README.md) | One-Euro filter, anatomical broadcast framing solver, 5-stage smooth PTZ controller, 2-tier motion-gated auto-focus |
+| [`crates/vc-ptz`](crates/vc-ptz/README.md) | Unified PTZ/Imaging trait + VISCA-IP, ONVIF S/T + WS-Discovery, NDI PTZ, Canon XC, Panasonic AW, Mock PTZ |
+| [`crates/vc-integrations`](crates/vc-integrations/README.md) | vMix TCP Tally + HTTP switching client, Bitfocus Buttons Control API client, Stream Deck key/dial router |
+| [`crates/vc-daemon`](crates/vc-daemon/README.md) | Headless Rust control & media server (REST + 30 Hz WebSocket + MJPEG + PWA static server + 30 Hz tracking supervisor + OSC `:9000`) |
+| [`apps/desktop`](apps/desktop/README.md) | Electron + React + TypeScript multiview studio & responsive Mobile/Tablet Remote PWA ([`apps/`](apps/README.md)) |
+| [`integrations/companion-module`](integrations/companion-module/README.md) | First-party Bitfocus Companion / Buttons module (`@companion-module/base`) ([`integrations/`](integrations/README.md)) |
+| [`models/`](models/README.md) | Optional permissive Apache-2.0/MIT ONNX weights (`RTMDet-s`, `RTMPose-s`, `OSNet`) & [`MODELS_LICENSE.md`](models/MODELS_LICENSE.md) |
+| [`scripts/`](scripts/README.md) | Windows setup, model download, dev launcher, installer packaging, and 4-camera soak test scripts |
+| [`docs/`](docs/README.md) | Documentation index and mandatory [`ndi-attribution.md`](docs/ndi-attribution.md) notices |
 
 ---
 
@@ -89,3 +93,12 @@ Instance settings, camera sources, framing/color/NDI profiles, PTZ calibration p
 - **Linux:** `~/.config/VideoController/videocontroller.db`
 
 Override the path via `VC_CONFIG_PATH`. Any legacy `config.json` alongside the database is imported automatically on first run.
+
+## Automated GitHub Releases
+
+The [Release Installers](.github/workflows/release.yml) workflow runs **only** when a semantic version tag (`vX.Y.Z` or `vX.Y.Z-prerelease`) is pushed. It runs the Rust test suite, builds native installers across Windows (`.exe` NSIS Setup + Portable), macOS (`.dmg`), and Linux (`.AppImage` + `.deb`) plus the Bitfocus Companion module archive, and publishes a GitHub Release automatically:
+
+```pwsh
+git tag v0.1.0
+git push origin v0.1.0
+```
