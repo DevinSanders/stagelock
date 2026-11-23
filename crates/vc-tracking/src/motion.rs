@@ -5,37 +5,11 @@
 //! 4. S-Curve Acceleration & Jerk Limiting (human fluid-head feathering)
 //! 5. Decoupled Slow Zoom + Per-Camera Speed Calibration Mapping
 
-use serde::{Deserialize, Serialize};
+pub use vc_core::CameraCalibration;
 use vc_core::{FramingConfig, PtzVelocity, TallyState};
 
 use crate::framing::FramingError;
 use crate::one_euro::OneEuroFilter;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CameraCalibration {
-    /// Gain scalar calibrated for this camera's horizontal pan motor response
-    pub pan_scale: f32,
-    /// Gain scalar calibrated for this camera's vertical tilt motor response
-    pub tilt_scale: f32,
-    /// Gain scalar calibrated for this camera's optical zoom motor response
-    pub zoom_scale: f32,
-    /// Measured end-to-end video + network + motor latency (ms)
-    pub latency_ms: f32,
-    /// Minimum normalized motor speed below which camera stays stationary (motor deadband)
-    pub min_effective_speed: f32,
-}
-
-impl Default for CameraCalibration {
-    fn default() -> Self {
-        Self {
-            pan_scale: 1.0,
-            tilt_scale: 1.0,
-            zoom_scale: 1.0,
-            latency_ms: 180.0,
-            min_effective_speed: 0.03,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 struct AxisState {

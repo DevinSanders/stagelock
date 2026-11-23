@@ -19,6 +19,8 @@ if (-not (Test-Path $daemonExe)) {
 }
 
 $tmpCfg = Join-Path $env:TEMP "vc-soak-config.json"
+$tmpDb = Join-Path $env:TEMP "vc-soak-config.db"
+Remove-Item $tmpCfg, $tmpDb, "$tmpDb-wal", "$tmpDb-shm" -ErrorAction SilentlyContinue
 $camIds = @(
     "11111111-1111-1111-1111-111111111101",
     "11111111-1111-1111-1111-111111111102",
@@ -120,9 +122,13 @@ try {
     if ($ramDelta -gt 80) {
         throw "Potential memory leak detected (+$ramDelta MB over $DurationSeconds s)"
     }
+    if (-not (Test-Path $tmpDb)) {
+        throw "Expected SQLite database was not created at $tmpDb"
+    }
+    Write-Host "SQLite:  verified database persisted at $tmpDb" -ForegroundColor Green
     Write-Host "SOAK TEST PASSED" -ForegroundColor Green
 }
 finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    Remove-Item $tmpCfg -ErrorAction SilentlyContinue
+    Remove-Item $tmpCfg, $tmpDb, "$tmpDb-wal", "$tmpDb-shm" -ErrorAction SilentlyContinue
 }

@@ -117,6 +117,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| ConfigStore::default_path());
 
     let store = ConfigStore::load_or_create(&config_path)?;
+    info!(db = %store.db_path().display(), "Loaded SQLite configuration database");
     let cfg_snapshot = store.snapshot().await;
     let media = MediaEngine::new();
     let ptz = PtzManager::new(media.clone());

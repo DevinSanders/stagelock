@@ -61,8 +61,15 @@ impl TrackingSupervisor {
         let media = self.media.clone();
         let ptz = self.ptz.clone();
 
+        let initial_calibration = self
+            .store
+            .get_camera(camera_id)
+            .await
+            .map(|c| c.calibration)
+            .unwrap_or_default();
+
         let task = tokio::spawn(async move {
-            let mut controller = CameraTrackingController::new(CameraCalibration::default());
+            let mut controller = CameraTrackingController::new(initial_calibration);
             let mut ticker = tokio::time::interval(Duration::from_millis(33)); // 30 Hz
             let mut last_tick = Instant::now();
 
@@ -193,6 +200,11 @@ impl TrackingSupervisor {
             latency_ms: (base_latency_ms + cmd_rtt_ms).clamp(80.0, 450.0),
             min_effective_speed: min_speed,
         };
+
+        let _ = self
+            .store
+            .update_calibration(camera_id, calibration.clone())
+            .await;
 
         if let Some(entry) = self.loops.read().await.get(&camera_id) {
             let _ = entry

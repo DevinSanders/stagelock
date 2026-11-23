@@ -344,6 +344,44 @@ pub struct CameraPreset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CameraCalibration {
+    /// Gain scalar calibrated for this camera's horizontal pan motor response
+    #[serde(default = "default_one")]
+    pub pan_scale: f32,
+    /// Gain scalar calibrated for this camera's vertical tilt motor response
+    #[serde(default = "default_one")]
+    pub tilt_scale: f32,
+    /// Gain scalar calibrated for this camera's optical zoom motor response
+    #[serde(default = "default_one")]
+    pub zoom_scale: f32,
+    /// Measured end-to-end video + network + motor latency (ms)
+    #[serde(default = "default_calibration_latency_ms")]
+    pub latency_ms: f32,
+    /// Minimum normalized motor speed below which camera stays stationary (motor deadband)
+    #[serde(default = "default_min_effective_speed")]
+    pub min_effective_speed: f32,
+}
+
+fn default_calibration_latency_ms() -> f32 {
+    180.0
+}
+fn default_min_effective_speed() -> f32 {
+    0.03
+}
+
+impl Default for CameraCalibration {
+    fn default() -> Self {
+        Self {
+            pan_scale: 1.0,
+            tilt_scale: 1.0,
+            zoom_scale: 1.0,
+            latency_ms: default_calibration_latency_ms(),
+            min_effective_speed: default_min_effective_speed(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CameraConfig {
     pub id: CameraId,
     pub name: String,
@@ -362,6 +400,8 @@ pub struct CameraConfig {
     pub vmix: VmixBinding,
     #[serde(default)]
     pub presets: Vec<CameraPreset>,
+    #[serde(default)]
+    pub calibration: CameraCalibration,
 }
 
 impl CameraConfig {
@@ -394,6 +434,7 @@ impl CameraConfig {
                 CameraPreset { slot: 3, name: "Stage Left".into() },
                 CameraPreset { slot: 4, name: "Stage Right".into() },
             ],
+            calibration: CameraCalibration::default(),
         }
     }
 }
