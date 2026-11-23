@@ -4,7 +4,7 @@ Headless Rust control plane, media server, 30 Hz multi-camera tracking superviso
 
 ## Responsibilities
 
-- **REST API (`/api/v1/...`):** Camera CRUD, framing/color/NDI/vMix settings, PTZ move/stop/focus/preset/calibration, ONVIF/NDI/USB discovery, vMix & Bitfocus Buttons triggers, and LAN remote access metadata (`/api/v1/remote-info`).
+- **REST API (`/api/v1/...`):** Camera CRUD, framing/color/NDI/vMix settings, PTZ move/stop/focus/preset/calibration, ONVIF/NDI/USB discovery, vMix & Bitfocus Buttons triggers, LAN remote access metadata (`/api/v1/remote-info`), and graceful teardown (`/api/v1/shutdown`).
 - **Real-Time Telemetry WebSocket (`/ws/telemetry`):** Pushes system capabilities on connect followed by ~30 Hz per-camera bounding boxes, keypoints, tracking lock state, focus sharpness, and live vMix tally.
 - **Live Preview Streaming:** Single-frame JPEG (`/api/v1/cameras/{id}/snapshot.jpg`) and rate-limited MJPEG (`/api/v1/cameras/{id}/stream.mjpeg?max_fps=12`).
 - **LAN Mobile/Tablet Remote PWA Server:** Automatically serves the built UI from `apps/desktop/dist` (or `VC_WEB_DIST_DIR`) over LAN (`http://<studio-pc-ip>:8765`).

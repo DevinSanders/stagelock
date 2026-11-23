@@ -252,7 +252,24 @@ impl MediaEngine {
     pub async fn stop_camera(&self, id: CameraId) {
         if let Some(worker) = self.workers.write().await.remove(&id) {
             let _ = worker.stop_tx.send(true);
-            worker.task.abort();
+            let _ = tokio::time::timeout(Duration::from_millis(600), worker.task).await;
+        }
+    }
+
+    /// Gracefully stop all active camera capture/NDI/GStreamer workers on daemon shutdown.
+    pub async fn stop_all_cameras(&self) {
+        let workers: Vec<ManagedWorker> = self
+            .workers
+            .write()
+            .await
+            .drain()
+            .map(|(_, w)| w)
+            .collect();
+        for w in &workers {
+            let _ = w.stop_tx.send(true);
+        }
+        for w in workers {
+            let _ = tokio::time::timeout(Duration::from_millis(800), w.task).await;
         }
     }
 

@@ -153,6 +153,20 @@ impl TrackingSupervisor {
         }
     }
 
+    pub async fn stop_all_cameras(&self) {
+        let entries: Vec<TrackingLoopEntry> = self
+            .loops
+            .write()
+            .await
+            .drain()
+            .map(|(_, e)| e)
+            .collect();
+        for entry in entries {
+            let _ = entry.tx.send(LoopControlMsg::Stop);
+            entry.task.abort();
+        }
+    }
+
     pub async fn notify_manual_override(&self, camera_id: CameraId, hold_seconds: f32) {
         if let Some(entry) = self.loops.read().await.get(&camera_id) {
             let _ = entry.tx.send(LoopControlMsg::ManualOverride(hold_seconds));

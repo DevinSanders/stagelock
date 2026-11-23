@@ -769,6 +769,16 @@ impl ConfigStore {
         guard.bitfocus_buttons = bf.clone();
         Ok(bf)
     }
+
+    /// Flush and truncate the SQLite WAL journal cleanly during daemon shutdown.
+    pub fn checkpoint(&self) {
+        if let Err(err) = self.with_conn(|conn| {
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+            Ok(())
+        }) {
+            warn!("SQLite WAL checkpoint on shutdown skipped: {err}");
+        }
+    }
 }
 
 #[cfg(test)]

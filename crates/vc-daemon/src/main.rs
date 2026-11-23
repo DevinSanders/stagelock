@@ -16,6 +16,7 @@ use bytes::Bytes;
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
+use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::{info, warn};
@@ -51,6 +52,7 @@ struct AppState {
     osc_port: u16,
     lan_access_enabled: bool,
     web_ui_dir: Option<PathBuf>,
+    shutdown_tx: watch::Sender<bool>,
 }
 
 fn resolve_web_ui_dir() -> Option<PathBuf> {
@@ -137,8 +139,8 @@ async fn main() -> Result<()> {
     }
 
     // Spawn vMix TCP Tally + XML background sync & live tally-to-camera propagation
-    let _vmix_sync_handle = vmix.clone().spawn_background_sync();
-    {
+    let vmix_sync_handle = vmix.clone().spawn_background_sync();
+    let tally_bridge_handle = {
         let mut tally_rx = vmix.subscribe();
         let tally_store = store.clone();
         let tally_media = media.clone();
@@ -158,19 +160,20 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-        });
-    }
+        })
+    };
 
     let web_ui_dir = resolve_web_ui_dir();
     let lan_access_enabled = cfg_snapshot.server.lan_access_enabled;
     let http_port = cfg_snapshot.server.http_port;
     let osc_port = cfg_snapshot.server.osc_port;
+    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
     let state = AppState {
-        store,
-        media,
+        store: store.clone(),
+        media: media.clone(),
         ptz,
-        tracking,
+        tracking: tracking.clone(),
         vmix,
         buttons,
         streamdeck,
@@ -178,11 +181,12 @@ async fn main() -> Result<()> {
         osc_port,
         lan_access_enabled,
         web_ui_dir: web_ui_dir.clone(),
+        shutdown_tx: shutdown_tx.clone(),
     };
 
     // Spawn lightweight OSC listener for Bitfocus Companion / Buttons & external controllers
     let osc_state = state.clone();
-    tokio::spawn(async move {
+    let osc_handle = tokio::spawn(async move {
         run_osc_listener(osc_port, osc_state).await;
     });
 
@@ -200,7 +204,38 @@ async fn main() -> Result<()> {
 
     info!(addr = %bind_addr, osc_port, lan_urls = ?detect_lan_ipv4_addresses(), "VideoController daemon listening");
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    axum::serve(listener, app).await?;
+
+    let ctrl_c_tx = shutdown_tx.clone();
+    let graceful = async move {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received Ctrl+C; initiating graceful shutdown");
+                let _ = ctrl_c_tx.send(true);
+            }
+            _ = async {
+                while !*shutdown_rx.borrow() {
+                    if shutdown_rx.changed().await.is_err() {
+                        break;
+                    }
+                }
+            } => {
+                info!("Received shutdown request; initiating graceful shutdown");
+            }
+        }
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(graceful)
+        .await?;
+
+    // Cleanly tear down background loops, camera/NDI/GStreamer workers, and flush SQLite WAL
+    vmix_sync_handle.abort();
+    tally_bridge_handle.abort();
+    osc_handle.abort();
+    tracking.stop_all_cameras().await;
+    media.stop_all_cameras().await;
+    store.checkpoint();
+    info!("VideoController daemon stopped cleanly");
     Ok(())
 }
 
@@ -208,6 +243,7 @@ fn build_router(state: AppState) -> Router {
     let web_ui_dir = state.web_ui_dir.clone();
     let mut app = Router::new()
         .route("/api/v1/health", get(health))
+        .route("/api/v1/shutdown", post(request_shutdown))
         .route("/api/v1/capabilities", get(get_capabilities))
         .route("/api/v1/vision/status", get(get_vision_status))
         .route("/api/v1/remote-info", get(get_remote_info))
@@ -270,6 +306,11 @@ async fn health() -> Json<HealthResponse> {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+async fn request_shutdown(State(state): State<AppState>) -> StatusCode {
+    let _ = state.shutdown_tx.send(true);
+    StatusCode::ACCEPTED
 }
 
 async fn get_capabilities(State(state): State<AppState>) -> impl IntoResponse {
@@ -901,29 +942,48 @@ async fn stream_mjpeg(
         .map(|f| Duration::from_millis((1000 / f) as u64));
 
     let rx = handle.preview_rx;
-    let body_stream = stream::unfold((rx, Instant::now() - Duration::from_secs(1)), move |(mut rx, mut last_sent)| async move {
-        loop {
-            if rx.changed().await.is_err() {
-                return None;
-            }
-            if let Some(interval) = min_interval {
-                if last_sent.elapsed() < interval {
-                    continue;
+    let shutdown_rx = state.shutdown_tx.subscribe();
+    let body_stream = stream::unfold(
+        (rx, shutdown_rx, Instant::now() - Duration::from_secs(1)),
+        move |(mut rx, mut shutdown_rx, mut last_sent)| async move {
+            loop {
+                if *shutdown_rx.borrow() {
+                    return None;
                 }
+                tokio::select! {
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
+                            return None;
+                        }
+                    }
+                    changed = rx.changed() => {
+                        if changed.is_err() {
+                            return None;
+                        }
+                    }
+                }
+                if let Some(interval) = min_interval {
+                    if last_sent.elapsed() < interval {
+                        continue;
+                    }
+                }
+                let Some(frame) = rx.borrow().clone() else {
+                    continue;
+                };
+                last_sent = Instant::now();
+                let mut chunk = Vec::with_capacity(frame.len() + 96);
+                chunk.extend_from_slice(b"--vcframe\r\nContent-Type: image/jpeg\r\nContent-Length: ");
+                chunk.extend_from_slice(frame.len().to_string().as_bytes());
+                chunk.extend_from_slice(b"\r\n\r\n");
+                chunk.extend_from_slice(&frame);
+                chunk.extend_from_slice(b"\r\n");
+                return Some((
+                    Ok::<Bytes, std::io::Error>(Bytes::from(chunk)),
+                    (rx, shutdown_rx, last_sent),
+                ));
             }
-            let Some(frame) = rx.borrow().clone() else {
-                continue;
-            };
-            last_sent = Instant::now();
-            let mut chunk = Vec::with_capacity(frame.len() + 96);
-            chunk.extend_from_slice(b"--vcframe\r\nContent-Type: image/jpeg\r\nContent-Length: ");
-            chunk.extend_from_slice(frame.len().to_string().as_bytes());
-            chunk.extend_from_slice(b"\r\n\r\n");
-            chunk.extend_from_slice(&frame);
-            chunk.extend_from_slice(b"\r\n");
-            return Some((Ok::<Bytes, std::io::Error>(Bytes::from(chunk)), (rx, last_sent)));
-        }
-    });
+        },
+    );
 
     Response::builder()
         .status(StatusCode::OK)
@@ -947,13 +1007,23 @@ async fn handle_telemetry_ws(mut socket: WebSocket, state: AppState) {
     }
 
     let mut interval = tokio::time::interval(Duration::from_millis(33)); // ~30 Hz
+    let mut shutdown_rx = state.shutdown_tx.subscribe();
     loop {
-        interval.tick().await;
-        let cameras = state.media.collect_telemetry().await;
-        let batch = DaemonWsEvent::TelemetryBatch { cameras };
-        if let Ok(json) = serde_json::to_string(&batch) {
-            if socket.send(Message::Text(json.into())).await.is_err() {
-                break;
+        tokio::select! {
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
+            }
+            _ = interval.tick() => {
+                let cameras = state.media.collect_telemetry().await;
+                let batch = DaemonWsEvent::TelemetryBatch { cameras };
+                if let Ok(json) = serde_json::to_string(&batch) {
+                    if socket.send(Message::Text(json.into())).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -1041,7 +1111,7 @@ mod tests {
     use tower::ServiceExt;
     use vc_core::PtzConfig;
 
-    fn test_app() -> (Router, tempfile::TempDir) {
+    fn test_app() -> (Router, tempfile::TempDir, watch::Receiver<bool>) {
         let dir = tempfile::tempdir().unwrap();
         let store = ConfigStore::load_or_create(dir.path().join("test.db")).unwrap();
         let media = MediaEngine::new();
@@ -1050,6 +1120,7 @@ mod tests {
         let vmix = VmixClient::new(VmixConfig::default());
         let buttons = BitfocusButtonsClient::new();
         let streamdeck = StreamDeckController::new();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let state = AppState {
             store,
             media,
@@ -1062,13 +1133,14 @@ mod tests {
             osc_port: 9000,
             lan_access_enabled: true,
             web_ui_dir: None,
+            shutdown_tx,
         };
-        (build_router(state), dir)
+        (build_router(state), dir, shutdown_rx)
     }
 
     #[tokio::test]
     async fn health_and_camera_crud_happy_and_404_paths() {
-        let (app, _dir) = test_app();
+        let (app, _dir, _shutdown_rx) = test_app();
 
         // Health happy path
         let res = app
@@ -1135,7 +1207,7 @@ mod tests {
 
     #[tokio::test]
     async fn bad_requests_and_disabled_integrations_return_proper_error_codes() {
-        let (app, _dir) = test_app();
+        let (app, _dir, shutdown_rx) = test_app();
 
         // Invalid UUID path parameter -> 400 Bad Request
         let bad_id = app
@@ -1208,5 +1280,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(buttons_resp.status(), StatusCode::BAD_GATEWAY);
+
+        // Graceful shutdown endpoint signals watch channel and returns 202 Accepted
+        assert!(!*shutdown_rx.borrow());
+        let shutdown_resp = app
+            .clone()
+            .oneshot(Request::post("/api/v1/shutdown").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(shutdown_resp.status(), StatusCode::ACCEPTED);
+        assert!(*shutdown_rx.borrow());
     }
 }
