@@ -38,7 +38,7 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
 
 | Crate / App | Responsibility |
 | :--- | :--- |
-| `crates/vc-core` | Shared domain models, UUID camera configs, telemetry schemas, atomic config store |
+| `crates/vc-core` | Shared domain models, UUID camera configs, telemetry schemas, embedded SQLite (`videocontroller.db`) store with versioned migrations & legacy `config.json` auto-import |
 | `crates/vc-media` | Multi-GPU prober, GStreamer live ingest (`gst-native` or runtime bridge), NDI® 6 dynamic loader, color & Unsharp-Mask pipeline |
 | `crates/vc-vision` | ONNX Runtime (`ort` v2) wrapper (`RTMDet`, `RTMPose`, `OSNet`), spatial HSV fallback, CMC, BoT-SORT, identity gallery, face-ROI sharpness |
 | `crates/vc-tracking` | One-Euro filter, anatomical broadcast framing solver, 5-stage smooth PTZ controller, 2-tier motion-gated auto-focus |
@@ -65,11 +65,27 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
    ```pwsh
    .\scripts\dev.ps1
    ```
-4. **Build Portable Windows Release Bundle:**
+4. **Build Installers (Windows `.exe`, macOS `.dmg`, Linux `.AppImage` + `.deb`):**
    ```pwsh
+   # Windows (builds vc-daemon release, UI/PWA, Companion module, NSIS Setup .exe + Portable .exe):
    .\scripts\package-windows.ps1
+
+   # Cross-platform via electron-builder (after `cargo build --release -p vc-daemon` and `pnpm build:ui`):
+   pnpm package:win    # Windows NSIS Setup .exe + Portable .exe (apps/desktop/release/)
+   pnpm package:mac    # macOS .dmg (apps/desktop/release/)
+   pnpm package:linux  # Linux .AppImage + .deb (apps/desktop/release/)
    ```
 5. **Run Automated 4-Camera Live Soak & Reliability Test:**
    ```pwsh
    .\scripts\soak-test.ps1 -DurationSeconds 30
    ```
+
+## Settings Persistence (SQLite)
+
+Instance settings, camera sources, framing/color/NDI profiles, PTZ calibration profiles, and camera presets are stored in an embedded **SQLite** database (WAL mode, foreign-key enforcement, versioned migrations):
+
+- **Windows:** `%APPDATA%\VideoController\videocontroller.db`
+- **macOS:** `~/Library/Application Support/VideoController/videocontroller.db`
+- **Linux:** `~/.config/VideoController/videocontroller.db`
+
+Override the path via `VC_CONFIG_PATH`. Any legacy `config.json` alongside the database is imported automatically on first run.

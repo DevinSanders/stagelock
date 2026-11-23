@@ -1,16 +1,31 @@
-name: Release Bundles
+name: Release Installers
 
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 jobs:
   build-release:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: win
+            package_cmd: pnpm package:win
+            artifact_glob: apps/desktop/release/*.exe
+          - os: macos-latest
+            platform: mac
+            package_cmd: pnpm package:mac
+            artifact_glob: apps/desktop/release/*.dmg
+          - os: ubuntu-latest
+            platform: linux
+            package_cmd: pnpm package:linux
+            artifact_glob: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -38,13 +53,17 @@ jobs:
           pnpm build:ui
           pnpm --filter companion-module-videocontroller build
 
-      - name: Upload vc-daemon + PWA + Companion artifacts
+      - name: Package ${{ matrix.platform }} installer via electron-builder
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: ${{ matrix.package_cmd }}
+
+      - name: Upload ${{ matrix.platform }} installers & Companion module
         uses: actions/upload-artifact@v4
         with:
-          name: videocontroller-${{ matrix.os }}
+          name: videocontroller-${{ matrix.platform }}-installers
           path: |
-            target/release/vc-daemon*
-            apps/desktop/dist/
+            ${{ matrix.artifact_glob }}
             integrations/companion-module/dist/
             integrations/companion-module/companion/
             integrations/companion-module/package.json

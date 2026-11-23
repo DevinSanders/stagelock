@@ -2,12 +2,18 @@
   "name": "@videocontroller/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Multi-camera preview, NDI re-broadcast, and AI auto-tracking PTZ studio controller",
+  "author": "VideoController Contributors",
+  "homepage": "https://github.com/videocontroller/videocontroller",
   "license": "Apache-2.0 OR MIT",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http-get://127.0.0.1:5173 && electron .\"",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
+    "package:win": "electron-builder --config electron-builder.yml --win --x64 --publish never",
+    "package:mac": "electron-builder --config electron-builder.yml --mac --publish never",
+    "package:linux": "electron-builder --config electron-builder.yml --linux --publish never",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +28,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^9.1.2",
     "electron": "^35.2.0",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "wait-on": "^8.0.3"

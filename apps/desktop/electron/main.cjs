@@ -8,11 +8,12 @@ let daemonProcess = null;
 
 function resolveDaemonBinary() {
   const exeName = process.platform === "win32" ? "vc-daemon.exe" : "vc-daemon";
-  const candidates = [
-    path.resolve(__dirname, "..", "..", "..", "target", "release", exeName),
-    path.resolve(__dirname, "..", "..", "..", "target", "debug", exeName),
-    path.resolve(process.resourcesPath || "", "bin", exeName),
-  ];
+  const packagedBin = path.resolve(process.resourcesPath || "", "bin", exeName);
+  const devRelease = path.resolve(__dirname, "..", "..", "..", "target", "release", exeName);
+  const devDebug = path.resolve(__dirname, "..", "..", "..", "target", "debug", exeName);
+  const candidates = app.isPackaged
+    ? [packagedBin, devRelease, devDebug]
+    : [devRelease, devDebug, packagedBin];
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 

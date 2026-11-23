@@ -7,6 +7,9 @@
   "scripts": {
     "dev:ui": "pnpm --filter @videocontroller/desktop dev",
     "build:ui": "pnpm --filter @videocontroller/desktop build",
+    "package:win": "pnpm --filter @videocontroller/desktop package:win",
+    "package:mac": "pnpm --filter @videocontroller/desktop package:mac",
+    "package:linux": "pnpm --filter @videocontroller/desktop package:linux",
     "typecheck": "pnpm -r typecheck"
   }
 }
