@@ -23,17 +23,22 @@ try {
     }
 
     # Guard against Node 26 + extract-zip bug leaving electron.exe unextracted
-    $electronExe = Join-Path $repoRoot "apps\desktop\node_modules\electron\dist\electron.exe"
-    if (-not (Test-Path $electronExe)) {
+    $electronDir = Join-Path $repoRoot "apps\desktop\node_modules\electron"
+    $electronExe = Join-Path $electronDir "dist\electron.exe"
+    if ((Test-Path $electronDir) -and (-not (Test-Path $electronExe))) {
         Write-Host "Electron binary missing; attempting repair from local Electron cache..." -ForegroundColor Yellow
-        $cacheZip = Get-ChildItem (Join-Path $env:LOCALAPPDATA "electron\Cache") -Recurse -Filter "electron-*-win32-x64.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $cacheRoot = Join-Path $env:LOCALAPPDATA "electron\Cache"
+        $cacheZip = Get-ChildItem -Path $cacheRoot -Recurse -Filter "electron-*-win32-x64.zip" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
         if ($cacheZip) {
-            $electronDir = (Get-Item (Join-Path $repoRoot "apps\desktop\node_modules\electron")).Target
-            if (-not $electronDir) { $electronDir = Join-Path $repoRoot "apps\desktop\node_modules\electron" }
             $distDir = Join-Path $electronDir "dist"
-            Remove-Item -Recurse -Force $distDir -ErrorAction SilentlyContinue
+            if (Test-Path $distDir) {
+                Remove-Item -Recurse -Force $distDir -ErrorAction SilentlyContinue
+            }
             Expand-Archive -Path $cacheZip.FullName -DestinationPath $distDir -Force
             Set-Content -Path (Join-Path $electronDir "path.txt") -Value "electron.exe" -NoNewline
+            Write-Host "Repaired Electron binary at $electronExe" -ForegroundColor Green
         }
     }
 
