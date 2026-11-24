@@ -90,7 +90,7 @@ fn default_fps() -> u32 {
     30
 }
 fn default_rtsp_latency() -> u32 {
-    80
+    25
 }
 fn default_true() -> bool {
     true

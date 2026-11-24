@@ -31,7 +31,7 @@ use vc_integrations::{
     BitfocusButtonsClient, ButtonsTriggerRequest, StreamDeckAction, StreamDeckController,
     VmixClient, VmixSwitchCommand,
 };
-use vc_media::{CaptureDeviceInfo, MediaEngine, NdiDiscoveredSource};
+use vc_media::{encode_ws_video_packet, CaptureDeviceInfo, MediaEngine, NdiDiscoveredSource};
 use vc_ptz::{
     discover_onvif_devices, resolve_onvif_camera, FocusCommand, ImagingCommand,
     OnvifDiscoveredDevice, PtzManager,
@@ -281,6 +281,7 @@ fn build_router(state: AppState) -> Router {
         )
         .route("/api/v1/integrations/buttons/trigger", post(trigger_buttons_control))
         .route("/ws/telemetry", get(ws_telemetry))
+        .route("/ws/video/{id}", get(ws_video_h264))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -995,6 +996,97 @@ async fn stream_mjpeg(
 
 async fn ws_telemetry(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_telemetry_ws(socket, state))
+}
+
+async fn ws_video_h264(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Path(id): Path<CameraId>,
+) -> impl IntoResponse {
+    let Some(handle) = state.media.get_handle(id).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let shutdown_rx = state.shutdown_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_video_h264_ws(socket, handle, shutdown_rx))
+        .into_response()
+}
+
+async fn handle_video_h264_ws(
+    mut socket: WebSocket,
+    handle: vc_media::CameraMediaHandle,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    let mut sub = match handle.subscribe_h264().await {
+        Ok(s) => s,
+        Err(err) => {
+            let msg = serde_json::json!({
+                "type": "fallback",
+                "reason": err.to_string(),
+            });
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+    };
+
+    let mut sent_config_codec: Option<String> = None;
+
+    if let Some(kf) = sub.initial_keyframe.take() {
+        let cfg = serde_json::json!({
+            "type": "config",
+            "codec": kf.codec,
+            "width": kf.width,
+            "height": kf.height,
+            "encoder": kf.encoder_name,
+        });
+        if socket.send(Message::Text(cfg.to_string().into())).await.is_err() {
+            return;
+        }
+        sent_config_codec = Some(kf.codec.clone());
+        let pkt = encode_ws_video_packet(&kf);
+        if socket.send(Message::Binary(pkt.into())).await.is_err() {
+            return;
+        }
+    }
+
+    loop {
+        tokio::select! {
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
+            }
+            recv = sub.rx.recv() => {
+                match recv {
+                    Ok(au) => {
+                        if sent_config_codec.as_deref() != Some(au.codec.as_str()) {
+                            let cfg = serde_json::json!({
+                                "type": "config",
+                                "codec": au.codec,
+                                "width": au.width,
+                                "height": au.height,
+                                "encoder": au.encoder_name,
+                            });
+                            if socket.send(Message::Text(cfg.to_string().into())).await.is_err() {
+                                break;
+                            }
+                            sent_config_codec = Some(au.codec.clone());
+                        }
+                        let pkt = encode_ws_video_packet(&au);
+                        if socket.send(Message::Binary(pkt.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        // Drop stale frames rather than building up preview latency
+                        continue;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
+    }
 }
 
 async fn handle_telemetry_ws(mut socket: WebSocket, state: AppState) {

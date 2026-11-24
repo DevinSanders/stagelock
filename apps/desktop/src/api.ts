@@ -20,20 +20,42 @@ function resolveDaemonUrl(): string {
   if (window.vcHost?.daemonBaseUrl) {
     return window.vcHost.daemonBaseUrl;
   }
+  const isTauri =
+    typeof window !== "undefined" &&
+    ("__TAURI_INTERNALS__" in window ||
+      window.location.protocol === "tauri:" ||
+      window.location.hostname === "tauri.localhost");
+  if (isTauri) {
+    return "http://127.0.0.1:8765";
+  }
   const { protocol, hostname, port, origin } = window.location;
   // When running Vite dev server (:5173) from desktop or a LAN phone, target daemon on :8765
   if (port === "5173") {
     return `${protocol}//${hostname}:8765`;
   }
+  if (protocol === "file:") {
+    return "http://127.0.0.1:8765";
+  }
   return origin;
 }
 
 export const DAEMON_URL = resolveDaemonUrl();
-export const IS_ELECTRON = Boolean(window.vcHost);
+export const IS_DESKTOP = Boolean(
+  window.vcHost ||
+    (typeof window !== "undefined" &&
+      ("__TAURI_INTERNALS__" in window ||
+        window.location.protocol === "tauri:" ||
+        window.location.hostname === "tauri.localhost"))
+);
+export const IS_ELECTRON = IS_DESKTOP;
 
 export function mjpegStreamUrl(cameraId: string, maxFps?: number): string {
   const qs = maxFps ? `?max_fps=${maxFps}` : "";
   return `${DAEMON_URL}/api/v1/cameras/${cameraId}/stream.mjpeg${qs}`;
+}
+
+export function videoH264WsUrl(cameraId: string): string {
+  return `${DAEMON_URL.replace(/^http/, "ws")}/ws/video/${cameraId}`;
 }
 
 export function telemetryWsUrl(): string {

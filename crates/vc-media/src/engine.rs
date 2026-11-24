@@ -21,6 +21,7 @@ use crate::capabilities::probe_system_capabilities;
 use crate::color::apply_color_adjustments_bgra;
 use crate::gst_pipeline::build_ingest_pipeline_spec;
 use crate::gst_runner::{discover_capture_devices, CaptureDeviceInfo, GstFrameSource};
+use crate::h264_preview::{H264PreviewHub, H264Subscription, RawBgraFrame};
 use crate::ndi::{NdiDiscoveredSource, NdiReceiver, NdiRuntime, NdiSender};
 use crate::test_pattern::render_demo_frame;
 
@@ -47,11 +48,15 @@ pub struct CameraMediaHandle {
     pub camera_id: CameraId,
     pub preview_rx: watch::Receiver<Option<Bytes>>,
     pub telemetry_rx: watch::Receiver<CameraTelemetry>,
+    h264_hub: H264PreviewHub,
     vision_cmd_tx: mpsc::UnboundedSender<VisionCommand>,
     shared: Arc<RwLock<CameraRuntimeShared>>,
 }
 
 impl CameraMediaHandle {
+    pub async fn subscribe_h264(&self) -> Result<H264Subscription> {
+        self.h264_hub.subscribe().await
+    }
     pub async fn update_color(&self, color: ColorAdjustments) {
         self.shared.write().await.config.color = color;
     }
@@ -124,6 +129,7 @@ struct ManagedWorker {
     handle: CameraMediaHandle,
     stop_tx: watch::Sender<bool>,
     task: JoinHandle<()>,
+    jpeg_task: JoinHandle<()>,
 }
 
 #[derive(Clone)]
@@ -198,6 +204,7 @@ impl MediaEngine {
         info!(camera_id = %camera_id, name = %config.name, pipeline = %pipeline_spec, "Starting camera worker");
 
         let (preview_tx, preview_rx) = watch::channel(None);
+        let (raw_frame_tx, raw_frame_rx) = watch::channel::<Option<RawBgraFrame>>(None);
         let initial_telemetry = make_initial_telemetry(&config);
         let (telemetry_tx, telemetry_rx) = watch::channel(initial_telemetry);
         let (stop_tx, stop_rx) = watch::channel(false);
@@ -214,6 +221,45 @@ impl MediaEngine {
             focus_state_override: None,
         }));
 
+        let h264_hub = H264PreviewHub::new(
+            self.capabilities.encode_backend.clone(),
+            raw_frame_rx.clone(),
+            stop_rx.clone(),
+        );
+
+        // Decoupled async JPEG preview encoder worker: reads always-latest BGRA frame without
+        // ever stalling the capture, AI vision, or PTZ control loop.
+        let mut jpeg_raw_rx = raw_frame_rx.clone();
+        let mut jpeg_stop_rx = stop_rx.clone();
+        let jpeg_task = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = jpeg_stop_rx.changed() => {
+                        if *jpeg_stop_rx.borrow() {
+                            break;
+                        }
+                    }
+                    res = jpeg_raw_rx.changed() => {
+                        if res.is_err() {
+                            break;
+                        }
+                        let Some(frame) = jpeg_raw_rx.borrow().clone() else {
+                            continue;
+                        };
+                        let encoded = tokio::task::spawn_blocking(move || {
+                            encode_bgra_to_jpeg(frame.width, frame.height, &frame.bgra, 78)
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                        if let Some(jpeg) = encoded {
+                            let _ = preview_tx.send(Some(jpeg));
+                        }
+                    }
+                }
+            }
+        });
+
         let ndi_runtime = self.ndi_runtime.clone();
         let decode_backend = self.capabilities.decode_backend.clone();
         let worker_shared = shared.clone();
@@ -222,7 +268,7 @@ impl MediaEngine {
                 worker_shared,
                 ndi_runtime,
                 decode_backend,
-                preview_tx,
+                raw_frame_tx,
                 telemetry_tx,
                 vision_cmd_rx,
                 stop_rx,
@@ -233,6 +279,7 @@ impl MediaEngine {
             camera_id,
             preview_rx,
             telemetry_rx,
+            h264_hub,
             vision_cmd_tx,
             shared,
         };
@@ -243,6 +290,7 @@ impl MediaEngine {
                 handle: handle.clone(),
                 stop_tx,
                 task,
+                jpeg_task,
             },
         );
 
@@ -252,6 +300,7 @@ impl MediaEngine {
     pub async fn stop_camera(&self, id: CameraId) {
         if let Some(worker) = self.workers.write().await.remove(&id) {
             let _ = worker.stop_tx.send(true);
+            worker.jpeg_task.abort();
             let _ = tokio::time::timeout(Duration::from_millis(600), worker.task).await;
         }
     }
@@ -267,6 +316,7 @@ impl MediaEngine {
             .collect();
         for w in &workers {
             let _ = w.stop_tx.send(true);
+            w.jpeg_task.abort();
         }
         for w in workers {
             let _ = tokio::time::timeout(Duration::from_millis(800), w.task).await;
@@ -343,7 +393,7 @@ fn run_camera_worker_loop(
     shared: Arc<RwLock<CameraRuntimeShared>>,
     ndi_runtime: Option<NdiRuntime>,
     decode_backend: HardwareAccelBackend,
-    preview_tx: watch::Sender<Option<Bytes>>,
+    raw_frame_tx: watch::Sender<Option<RawBgraFrame>>,
     telemetry_tx: watch::Sender<CameraTelemetry>,
     mut vision_cmd_rx: mpsc::UnboundedReceiver<VisionCommand>,
     stop_rx: watch::Receiver<bool>,
@@ -581,27 +631,8 @@ fn run_camera_worker_loop(
             seeded_dets,
         );
 
-        // Optional clean NDI re-broadcast before color adjustments
-        if !cfg.ndi_output.include_color_adjustments {
-            if let Some((_, ref sender)) = active_ndi_sender {
-                sender.send_bgra_frame(width, height, fps, &frame_buf);
-            }
-        }
-
-        // Apply live color adjustments + Unsharp-Mask Sharpness
-        apply_color_adjustments_bgra(&mut frame_buf, width, height, &cfg.color);
-
-        // NDI re-broadcast with color adjustments baked in
-        if cfg.ndi_output.include_color_adjustments {
-            if let Some((_, ref sender)) = active_ndi_sender {
-                sender.send_bgra_frame(width, height, fps, &frame_buf);
-            }
-        }
-
-        if let Some(jpeg) = encode_bgra_to_jpeg(width, height, &frame_buf, 78) {
-            let _ = preview_tx.send(Some(jpeg));
-        }
-
+        // Publish telemetry IMMEDIATELY after AI inference (BEFORE color grading & preview encoding!)
+        // so the event-driven PTZ tracking loop reacts within <0.2ms of each detection.
         let (default_ax, default_ay) = compute_target_anchor(cfg.framing.preset, cfg.framing.rule_of_thirds);
         let target_anchor = anchor_override.unwrap_or([default_ax, default_ay]);
         let deadzone = dz_override.unwrap_or(NormalizedRect {
@@ -650,6 +681,33 @@ fn run_camera_worker_loop(
             inference_fps,
         };
         let _ = telemetry_tx.send(telemetry);
+
+        // Optional clean NDI re-broadcast before color adjustments
+        if !cfg.ndi_output.include_color_adjustments {
+            if let Some((_, ref sender)) = active_ndi_sender {
+                sender.send_bgra_frame(width, height, fps, &frame_buf);
+            }
+        }
+
+        // Apply live color adjustments + Unsharp-Mask Sharpness
+        apply_color_adjustments_bgra(&mut frame_buf, width, height, &cfg.color);
+
+        // NDI re-broadcast with color adjustments baked in
+        if cfg.ndi_output.include_color_adjustments {
+            if let Some((_, ref sender)) = active_ndi_sender {
+                sender.send_bgra_frame(width, height, fps, &frame_buf);
+            }
+        }
+
+        // Hand off latest graded BGRA frame non-blockingly to decoupled JPEG & GPU H.264 preview encoders
+        let timestamp_us = (tick.saturating_mul(1_000_000)) / (fps.max(1) as u64);
+        let _ = raw_frame_tx.send(Some(RawBgraFrame {
+            width,
+            height,
+            fps,
+            timestamp_us,
+            bgra: Arc::new(frame_buf.clone()),
+        }));
 
         tick = tick.wrapping_add(1);
         if !use_gst && ndi_receiver.is_none() {

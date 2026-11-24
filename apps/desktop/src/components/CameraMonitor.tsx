@@ -1,6 +1,6 @@
-import React from "react";
-import { mjpegStreamUrl } from "../api";
+import React, { useCallback, useState } from "react";
 import type { CameraConfig, CameraTelemetry } from "../types";
+import { WebCodecsVideo } from "./WebCodecsVideo";
 
 interface Props {
   camera: CameraConfig;
@@ -19,6 +19,13 @@ export const CameraMonitor: React.FC<Props> = ({
   maxFps,
   onSelectPoint,
 }) => {
+  const [transport, setTransport] = useState<{ mode: "h264" | "mjpeg"; encoder?: string }>({
+    mode: "h264",
+  });
+  const handleTransportChange = useCallback((mode: "h264" | "mjpeg", encoder?: string) => {
+    setTransport({ mode, encoder });
+  }, []);
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const normX = (e.clientX - rect.left) / rect.width;
@@ -49,11 +56,11 @@ export const CameraMonitor: React.FC<Props> = ({
           onClick={handleClick}
           title="Tap or click a subject in frame to lock tracking"
         >
-          <img
-            className="monitor-img"
-            src={mjpegStreamUrl(camera.id, maxFps)}
-            alt={camera.name}
-            draggable={false}
+          <WebCodecsVideo
+            cameraId={camera.id}
+            cameraName={camera.name}
+            maxFps={maxFps}
+            onTransportChange={handleTransportChange}
           />
 
           <svg className="monitor-overlay" viewBox="0 0 1000 562.5" preserveAspectRatio="none">
@@ -163,6 +170,19 @@ export const CameraMonitor: React.FC<Props> = ({
           </span>
         </div>
         <div className="hud-badge">
+          <span
+            style={{
+              color: transport.mode === "h264" ? "#38bdf8" : "#94a3b8",
+              fontWeight: 600,
+            }}
+            title={
+              transport.mode === "h264"
+                ? `Zero-latency GPU WebCodecs H.264 (${transport.encoder ?? "HW"})`
+                : "MJPEG preview fallback"
+            }
+          >
+            {transport.mode === "h264" ? "H.264 LL" : "MJPEG"}
+          </span>
           {telemetry?.ndi_output_active && <span style={{ color: "#38bdf8" }}>NDI OUT</span>}
           <span
             style={{

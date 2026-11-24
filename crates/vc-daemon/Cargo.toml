@@ -4,6 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+gst-native = ["vc-media/gst-native"]
+onnx = ["vc-vision/onnx"]
+onnx-cuda = ["vc-vision/onnx-cuda"]
+onnx-directml = ["vc-vision/onnx-directml"]
+onnx-coreml = ["vc-vision/onnx-coreml"]
+
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true

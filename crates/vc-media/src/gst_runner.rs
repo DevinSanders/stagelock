@@ -162,10 +162,10 @@ pub fn build_bgra_capture_pipeline(
             latency_ms,
             prefer_tcp,
         } => {
-            let proto = if *prefer_tcp { "protocols=tcp" } else { "" };
+            let proto = if *prefer_tcp { "protocols=tcp" } else { "protocols=udp" };
             (
                 format!(
-                    "rtspsrc location=\"{url}\" latency={latency_ms} {proto} drop-on-latency=true ! rtph264depay ! h264parse ! {decoder}"
+                    "rtspsrc location=\"{url}\" latency={latency_ms} {proto} buffer-mode=none drop-on-latency=true ! rtph264depay ! h264parse ! {decoder}"
                 ),
                 format!("GStreamer RTSP ({decoder})"),
                 hw_accel,
@@ -193,7 +193,7 @@ pub fn build_bgra_capture_pipeline(
                 .unwrap_or_else(|| format!("rtsp://{host}:{port}/stream1"));
             (
                 format!(
-                    "rtspsrc location=\"{url}\" latency=80 protocols=tcp drop-on-latency=true ! rtph264depay ! h264parse ! {decoder}"
+                    "rtspsrc location=\"{url}\" latency=25 protocols=tcp buffer-mode=none drop-on-latency=true ! rtph264depay ! h264parse ! {decoder}"
                 ),
                 format!("GStreamer ONVIF ({decoder})"),
                 hw_accel,
@@ -270,7 +270,7 @@ impl GstFrameSource {
             use gstreamer::prelude::*;
             gstreamer::init().context("failed initializing GStreamer")?;
             let spec = format!(
-                "{base_pipeline} ! appsink name=vc_sink drop=true max-buffers=2 sync=false"
+                "{base_pipeline} ! appsink name=vc_sink drop=true max-buffers=1 sync=false"
             );
             info!(pipeline = %spec, "Starting native gstreamer-rs pipeline");
             let element = gstreamer::parse::launch(&spec)

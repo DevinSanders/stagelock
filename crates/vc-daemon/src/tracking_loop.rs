@@ -70,71 +70,110 @@ impl TrackingSupervisor {
 
         let task = tokio::spawn(async move {
             let mut controller = CameraTrackingController::new(initial_calibration);
-            let mut ticker = tokio::time::interval(Duration::from_millis(33)); // 30 Hz
+            let mut safety_ticker = tokio::time::interval(Duration::from_millis(100));
             let mut last_tick = Instant::now();
+            let mut subscribed_telem: Option<tokio::sync::watch::Receiver<vc_core::CameraTelemetry>> =
+                media.get_handle(camera_id).await.map(|h| h.telemetry_rx);
 
             loop {
-                tokio::select! {
-                    Some(msg) = rx.recv() => {
-                        match msg {
-                            LoopControlMsg::ManualOverride(secs) => {
-                                controller.notify_manual_override(secs);
+                // Event-driven wake: react immediately (<0.2ms) to every fresh AI vision frame
+                // rather than polling on a 33ms timer, with a 100ms safety tick for signal-loss stops.
+                let woke_by_frame = if let Some(ref mut telem_rx) = subscribed_telem {
+                    tokio::select! {
+                        biased;
+                        Some(msg) = rx.recv() => {
+                            match msg {
+                                LoopControlMsg::ManualOverride(secs) => {
+                                    controller.notify_manual_override(secs);
+                                }
+                                LoopControlMsg::SetCalibration(cal) => {
+                                    controller.set_calibration(cal);
+                                }
+                                LoopControlMsg::Stop => break,
                             }
-                            LoopControlMsg::SetCalibration(cal) => {
-                                controller.set_calibration(cal);
+                            continue;
+                        }
+                        res = telem_rx.changed() => {
+                            if res.is_err() {
+                                subscribed_telem = None;
+                                continue;
                             }
-                            LoopControlMsg::Stop => break,
+                            true
+                        }
+                        _ = safety_ticker.tick() => false,
+                    }
+                } else {
+                    tokio::select! {
+                        Some(msg) = rx.recv() => {
+                            match msg {
+                                LoopControlMsg::ManualOverride(secs) => {
+                                    controller.notify_manual_override(secs);
+                                }
+                                LoopControlMsg::SetCalibration(cal) => {
+                                    controller.set_calibration(cal);
+                                }
+                                LoopControlMsg::Stop => break,
+                            }
+                            continue;
+                        }
+                        _ = safety_ticker.tick() => {
+                            subscribed_telem = media.get_handle(camera_id).await.map(|h| h.telemetry_rx);
+                            false
                         }
                     }
-                    _ = ticker.tick() => {
-                        let now = Instant::now();
-                        let dt = now.duration_since(last_tick).as_secs_f32().clamp(0.01, 0.15);
-                        last_tick = now;
+                };
 
-                        let Some(cam_cfg) = store.get_camera(camera_id).await else {
-                            continue;
-                        };
-                        let Some(handle) = media.get_handle(camera_id).await else {
-                            continue;
-                        };
+                let now = Instant::now();
+                let dt = now.duration_since(last_tick).as_secs_f32().clamp(0.008, 0.15);
+                if woke_by_frame || dt >= 0.08 {
+                    last_tick = now;
+                } else {
+                    continue;
+                }
 
-                        let telem = handle.telemetry_rx.borrow().clone();
-                        let locked_subject = telem.subjects.iter().find(|s| s.is_locked);
+                let Some(cam_cfg) = store.get_camera(camera_id).await else {
+                    continue;
+                };
+                let Some(handle) = media.get_handle(camera_id).await else {
+                    subscribed_telem = None;
+                    continue;
+                };
 
-                        let out = controller.tick(
-                            &cam_cfg.framing,
-                            telem.tracking_state,
-                            locked_subject,
-                            telem.focus_sharpness,
-                            telem.tally,
-                            dt,
-                        );
+                let telem = handle.telemetry_rx.borrow().clone();
+                let locked_subject = telem.subjects.iter().find(|s| s.is_locked);
 
-                        handle
-                            .update_tracking_feedback(
-                                out.ptz_velocity,
-                                out.target_anchor,
-                                out.deadzone,
-                                out.focus_state,
-                            )
-                            .await;
+                let out = controller.tick(
+                    &cam_cfg.framing,
+                    telem.tracking_state,
+                    locked_subject,
+                    telem.focus_sharpness,
+                    telem.tally,
+                    dt,
+                );
 
-                        if let Some(driver) = ptz.get(camera_id).await {
-                            if out.should_send_ptz {
-                                let v = out.ptz_velocity;
-                                if v.pan.abs() < 1e-3 && v.tilt.abs() < 1e-3 && v.zoom.abs() < 1e-3 {
-                                    let _ = driver.stop().await;
-                                } else {
-                                    let _ = driver.pan_tilt_speed(v.pan, v.tilt).await;
-                                    let _ = driver.zoom_speed(v.zoom).await;
-                                }
-                            }
+                handle
+                    .update_tracking_feedback(
+                        out.ptz_velocity,
+                        out.target_anchor,
+                        out.deadzone,
+                        out.focus_state,
+                    )
+                    .await;
 
-                            if let Some(focus_cmd) = out.focus_command {
-                                debug!(camera_id = %camera_id, ?focus_cmd, "Auto-focus controller issued focus command");
-                                let _ = driver.focus(focus_cmd).await;
-                            }
+                if let Some(driver) = ptz.get(camera_id).await {
+                    if out.should_send_ptz {
+                        let v = out.ptz_velocity;
+                        if v.pan.abs() < 1e-3 && v.tilt.abs() < 1e-3 && v.zoom.abs() < 1e-3 {
+                            let _ = driver.stop().await;
+                        } else {
+                            let _ = driver.pan_tilt_speed(v.pan, v.tilt).await;
+                            let _ = driver.zoom_speed(v.zoom).await;
                         }
+                    }
+
+                    if let Some(focus_cmd) = out.focus_command {
+                        debug!(camera_id = %camera_id, ?focus_cmd, "Auto-focus controller issued focus command");
+                        let _ = driver.focus(focus_cmd).await;
                     }
                 }
             }
