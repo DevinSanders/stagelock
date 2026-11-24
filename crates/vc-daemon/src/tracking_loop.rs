@@ -275,3 +275,69 @@ impl TrackingSupervisor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vc_core::{CameraConfig, PtzConfig, VideoSourceConfig};
+
+    #[tokio::test]
+    async fn supervisor_tracks_live_camera_handles_override_and_calibrates_to_sqlite() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::load_or_create(dir.path().join("track.db")).unwrap();
+        let media = MediaEngine::new();
+        let ptz = PtzManager::new(media.clone());
+        let sup = TrackingSupervisor::new(store.clone(), media.clone(), ptz.clone());
+
+        let mut cam = CameraConfig::new_demo("Tracked Cam", "smpte");
+        cam.source = VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 320,
+            height: 180,
+            fps: 30,
+        };
+        cam.ptz = PtzConfig::Mock;
+        cam.framing.auto_track_enabled = true;
+        let cam_id = cam.id;
+        store.upsert_camera(cam.clone()).await.unwrap();
+        ptz.configure_camera(&cam).await;
+
+        // Start tracking BEFORE media exists to also cover the media-not-yet-started select branch
+        sup.start_or_restart_camera(cam_id).await;
+        tokio::time::sleep(Duration::from_millis(130)).await;
+
+        let handle = media.start_or_restart_camera(cam.clone()).await.unwrap();
+        // Wait for telemetry & lock first subject so tracking ticks actively send PTZ commands
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if !handle.telemetry_rx.borrow().subjects.is_empty() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        let tid = handle.telemetry_rx.borrow().subjects[0].track_id;
+        handle.set_locked_track(Some(tid)).await;
+        tokio::time::sleep(Duration::from_millis(180)).await;
+
+        // Manual override hold
+        sup.notify_manual_override(cam_id, 0.2).await;
+        tokio::time::sleep(Duration::from_millis(60)).await;
+
+        // Calibrate camera -> persists calibration into SQLite & notifies running loop
+        let report = sup.calibrate_camera(cam_id).await.unwrap();
+        assert_eq!(report.protocol, "mock");
+        assert!(report.calibration.latency_ms >= 80.0);
+        let reloaded = store.get_camera(cam_id).await.unwrap();
+        assert!((reloaded.calibration.latency_ms - report.calibration.latency_ms).abs() < 1e-3);
+
+        // Failure path: calibrating unknown camera returns error
+        assert!(sup.calibrate_camera(CameraId::new_v4()).await.is_err());
+
+        sup.stop_all_cameras().await;
+        media.stop_all_cameras().await;
+    }
+}

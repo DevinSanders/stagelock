@@ -79,7 +79,15 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
    pnpm package:mac    # macOS .dmg (target/release/bundle/dmg/)
    pnpm package:linux  # Linux .AppImage + .deb (target/release/bundle/)
    ```
-5. **Run Automated 4-Camera Live Soak & Reliability Test:**
+5. **Run Automated Unit + UI Tests & `>= 90%` Coverage Gate (Rust LLVM + Vitest V8):**
+   ```pwsh
+   # Unified Rust LLVM + Frontend UI coverage report & >=90% gate:
+   .\scripts\coverage.ps1 -MinCoverage 90
+
+   # Frontend user-perspective UI tests (happy & failure paths) with V8 coverage:
+   pnpm test:ui:coverage
+   ```
+6. **Run Automated 4-Camera Live Soak & Reliability Test:**
    ```pwsh
    .\scripts\soak-test.ps1 -DurationSeconds 30
    ```

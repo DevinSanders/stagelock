@@ -128,8 +128,15 @@ impl CameraMediaHandle {
 struct ManagedWorker {
     handle: CameraMediaHandle,
     stop_tx: watch::Sender<bool>,
-    task: JoinHandle<()>,
+    task: Option<JoinHandle<()>>,
     jpeg_task: JoinHandle<()>,
+}
+
+impl Drop for ManagedWorker {
+    fn drop(&mut self) {
+        let _ = self.stop_tx.send(true);
+        self.jpeg_task.abort();
+    }
 }
 
 #[derive(Clone)]
@@ -289,7 +296,7 @@ impl MediaEngine {
             ManagedWorker {
                 handle: handle.clone(),
                 stop_tx,
-                task,
+                task: Some(task),
                 jpeg_task,
             },
         );
@@ -298,10 +305,12 @@ impl MediaEngine {
     }
 
     pub async fn stop_camera(&self, id: CameraId) {
-        if let Some(worker) = self.workers.write().await.remove(&id) {
+        if let Some(mut worker) = self.workers.write().await.remove(&id) {
             let _ = worker.stop_tx.send(true);
             worker.jpeg_task.abort();
-            let _ = tokio::time::timeout(Duration::from_millis(600), worker.task).await;
+            if let Some(task) = worker.task.take() {
+                let _ = tokio::time::timeout(Duration::from_millis(600), task).await;
+            }
         }
     }
 
@@ -318,8 +327,10 @@ impl MediaEngine {
             let _ = w.stop_tx.send(true);
             w.jpeg_task.abort();
         }
-        for w in workers {
-            let _ = tokio::time::timeout(Duration::from_millis(800), w.task).await;
+        for mut w in workers {
+            if let Some(task) = w.task.take() {
+                let _ = tokio::time::timeout(Duration::from_millis(800), task).await;
+            }
         }
     }
 
@@ -716,5 +727,149 @@ fn run_camera_worker_loop(
                 std::thread::sleep(frame_period - elapsed);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_target_anchor_covers_all_presets_and_thirds() {
+        for preset in [FramingPreset::CloseUp, FramingPreset::WaistUp, FramingPreset::FullHeight] {
+            for thirds in [
+                RuleOfThirds::Center,
+                RuleOfThirds::LeftThird,
+                RuleOfThirds::RightThird,
+                RuleOfThirds::AutoLeadRoom,
+            ] {
+                let (x, y) = compute_target_anchor(preset, thirds);
+                assert!((0.1..=0.9).contains(&x) && (0.1..=0.9).contains(&y));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn media_engine_runs_demo_camera_updates_controls_and_stops_cleanly() {
+        let engine = MediaEngine::new();
+        assert!(!engine.capabilities().os.is_empty());
+        let _ = engine.ndi_runtime();
+        let _ = engine.discover_usb_devices().await;
+        let _ = engine.discover_ndi_sources().await;
+
+        let mut cam = CameraConfig::new_demo("Engine Test Cam", "smpte");
+        cam.source = VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 320,
+            height: 180,
+            fps: 30,
+        };
+        cam.ndi_output.enabled = true;
+        cam.ndi_output.include_color_adjustments = true;
+        cam.ndi_output.stream_name = "VC-EngineTest".into();
+        let cam_id = cam.id;
+
+        let handle = engine.start_or_restart_camera(cam).await.unwrap();
+        assert!(engine.get_handle(cam_id).await.is_some());
+
+        // Wait for live JPEG preview & telemetry with subjects
+        let preview_rx = handle.preview_rx.clone();
+        let telemetry_rx = handle.telemetry_rx.clone();
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                let has_jpg = preview_rx.borrow().as_ref().map_or(false, |b| b.len() > 100);
+                let has_subjs = !telemetry_rx.borrow().subjects.is_empty();
+                if has_jpg && has_subjs {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .expect("demo camera should emit JPEG and telemetry");
+
+        // Exercise every CameraMediaHandle mutation
+        handle
+            .update_color(ColorAdjustments {
+                brightness: 0.1,
+                contrast: 1.1,
+                ..ColorAdjustments::default()
+            })
+            .await;
+        handle
+            .update_framing(FramingConfig {
+                auto_track_enabled: true,
+                preset: FramingPreset::CloseUp,
+                rule_of_thirds: RuleOfThirds::LeftThird,
+                ..FramingConfig::default()
+            })
+            .await;
+        handle
+            .update_ndi_output(NdiOutputConfig {
+                enabled: true,
+                stream_name: "VC-EngineTest-Clean".into(),
+                groups: None,
+                include_color_adjustments: false,
+            })
+            .await;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+
+        // Disable NDI output to exercise sender teardown branch
+        handle
+            .update_ndi_output(NdiOutputConfig {
+                enabled: false,
+                stream_name: "VC-EngineTest-Clean".into(),
+                groups: None,
+                include_color_adjustments: false,
+            })
+            .await;
+
+        let subj = telemetry_rx.borrow().subjects[0].clone();
+        let picked = handle
+            .select_subject_at(
+                subj.bbox.x + subj.bbox.width * 0.5,
+                subj.bbox.y + subj.bbox.height * 0.5,
+            )
+            .await;
+        assert_eq!(picked, Some(subj.track_id));
+        handle.set_locked_track(Some(subj.track_id)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.set_locked_track(None).await;
+        handle
+            .set_ptz_velocity(PtzVelocity {
+                pan: 0.2,
+                tilt: -0.1,
+                zoom: 0.05,
+            })
+            .await;
+        handle
+            .update_tracking_feedback(
+                PtzVelocity { pan: 0.0, tilt: 0.0, zoom: 0.0 },
+                [0.33, 0.33],
+                NormalizedRect { x: 0.25, y: 0.25, width: 0.16, height: 0.16 },
+                FocusMonitorState::Sharp,
+            )
+            .await;
+        handle.set_tally(TallyState::Program).await;
+        assert!(handle.get_ndi_receiver().await.is_none());
+
+        // Subscribe H.264 if host has an encoder (drops cleanly)
+        if let Ok(_sub) = handle.subscribe_h264().await {}
+
+        // Also test unreachable RTSP failure/reconnect branch briefly
+        let mut bad_cam = CameraConfig::new_demo("Unreachable RTSP", "smpte");
+        bad_cam.source = VideoSourceConfig::Rtsp {
+            url: "rtsp://127.0.0.1:1/nonexistent".into(),
+            latency_ms: 25,
+            prefer_tcp: true,
+        };
+        let _ = engine.start_or_restart_camera(bad_cam).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+
+        let all = engine.collect_telemetry().await;
+        assert_eq!(all.len(), 2);
+
+        engine.stop_all_cameras().await;
+        assert!(engine.collect_telemetry().await.is_empty());
     }
 }

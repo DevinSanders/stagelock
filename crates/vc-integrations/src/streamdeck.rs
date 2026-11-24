@@ -165,3 +165,38 @@ impl StreamDeckController {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_deck_status_reflects_direct_hid_coexistence_modes_and_bindings() {
+        let ctrl = StreamDeckController::new();
+        let disabled = ctrl.status(&StreamDeckConfig {
+            direct_hid_enabled: false,
+            brightness: 80,
+        });
+        assert!(!disabled.direct_hid_enabled);
+        assert!(disabled.mode_note.contains("paused"));
+        assert_eq!(disabled.key_bindings.len(), 8);
+        assert_eq!(disabled.dial_bindings.len(), 4);
+
+        let enabled = ctrl.status(&StreamDeckConfig {
+            direct_hid_enabled: true,
+            brightness: 55,
+        });
+        assert!(enabled.direct_hid_enabled);
+        assert_eq!(enabled.brightness, 55);
+        assert!(enabled.mode_note.contains("Direct USB HID mode enabled"));
+
+        // Verify JSON serialization roundtrip for key + dial + vMix actions
+        let action = StreamDeckAction::VmixFade {
+            input: "2".into(),
+            duration_ms: 500,
+        };
+        let raw = serde_json::to_string(&action).unwrap();
+        let back: StreamDeckAction = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back, action);
+    }
+}

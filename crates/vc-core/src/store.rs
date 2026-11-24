@@ -960,4 +960,77 @@ mod tests {
             "error should identify corrupt column: {err:#}"
         );
     }
+
+    #[tokio::test]
+    async fn updates_all_camera_subconfigs_instance_settings_and_checkpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("full.db");
+        assert!(ConfigStore::default_path().ends_with("videocontroller.db"));
+
+        let store = ConfigStore::load_or_create(&db_path).unwrap();
+        let cam_id = store.list_cameras().await[0].id;
+
+        // Update existing camera (overwrite + replace presets)
+        let mut edited = store.get_camera(cam_id).await.unwrap();
+        edited.name = "Renamed Stage".into();
+        edited.presets = vec![CameraPreset { slot: 9, name: "Solo".into() }];
+        store.upsert_camera(edited).await.unwrap();
+
+        let mut f = FramingConfig::default();
+        f.auto_track_enabled = true;
+        f.preset = FramingPreset::FullHeight;
+        assert!(store.update_framing(cam_id, f.clone()).await.unwrap().is_some());
+
+        let mut c = ColorAdjustments::default();
+        c.exposure = 0.75;
+        c.sharpness = 1.2;
+        assert!(store.update_color(cam_id, c.clone()).await.unwrap().is_some());
+
+        let ndi = NdiOutputConfig {
+            enabled: true,
+            stream_name: "Studio Out".into(),
+            groups: Some("Live".into()),
+            include_color_adjustments: false,
+        };
+        assert!(store.update_ndi_output(cam_id, ndi.clone()).await.unwrap().is_some());
+        assert!(store.update_vmix_binding(cam_id, Some("Input 2".into())).await.unwrap().is_some());
+
+        let sd = StreamDeckConfig { direct_hid_enabled: true, brightness: 60 };
+        store.update_stream_deck_config(sd.clone()).await.unwrap();
+
+        let bf = BitfocusButtonsConfig {
+            enabled: true,
+            base_url: "http://10.0.0.20:8000".into(),
+            api_key: "secret".into(),
+        };
+        store.update_bitfocus_buttons_config(bf.clone()).await.unwrap();
+
+        store.checkpoint();
+
+        // Reload and verify every updated column & setting persisted cleanly
+        let reloaded = ConfigStore::load_or_create(&db_path).unwrap();
+        let cam = reloaded.get_camera(cam_id).await.unwrap();
+        assert_eq!(cam.name, "Renamed Stage");
+        assert_eq!(cam.presets.len(), 1);
+        assert_eq!(cam.presets[0].slot, 9);
+        assert_eq!(cam.framing, f);
+        assert_eq!(cam.color, c);
+        assert_eq!(cam.ndi_output, ndi);
+        assert_eq!(cam.vmix.input_ref.as_deref(), Some("Input 2"));
+        let snap = reloaded.snapshot().await;
+        assert_eq!(snap.stream_deck, sd);
+        assert_eq!(snap.bitfocus_buttons, bf);
+    }
+
+    #[tokio::test]
+    async fn explicit_valid_json_seed_imports_into_sibling_db() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("seed.json");
+        let cfg = AppConfig::default();
+        std::fs::write(&json_path, serde_json::to_string(&cfg).unwrap()).unwrap();
+
+        let store = ConfigStore::load_or_create(&json_path).unwrap();
+        assert_eq!(store.db_path(), dir.path().join("seed.db").as_path());
+        assert_eq!(store.list_cameras().await.len(), 2);
+    }
 }

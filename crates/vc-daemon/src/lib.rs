@@ -1401,4 +1401,499 @@ mod tests {
         assert_eq!(shutdown_resp.status(), StatusCode::ACCEPTED);
         assert!(*shutdown_rx.borrow());
     }
+
+    #[tokio::test]
+    async fn full_rest_api_surface_streamdeck_actions_mjpeg_and_osc_happy_and_error_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let web_dir = dir.path().join("web");
+        std::fs::create_dir_all(&web_dir).unwrap();
+        std::fs::write(web_dir.join("index.html"), "<html>ok</html>").unwrap();
+
+        let store = ConfigStore::load_or_create(dir.path().join("full.db")).unwrap();
+        let media = MediaEngine::new();
+        let ptz = PtzManager::new(media.clone());
+        let tracking = TrackingSupervisor::new(store.clone(), media.clone(), ptz.clone());
+        let vmix = VmixClient::new(VmixConfig::default());
+        let buttons = BitfocusButtonsClient::new();
+        let streamdeck = StreamDeckController::new();
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+        let state = AppState {
+            store: store.clone(),
+            media: media.clone(),
+            ptz: ptz.clone(),
+            tracking: tracking.clone(),
+            vmix,
+            buttons,
+            streamdeck,
+            http_port: 8765,
+            osc_port: 9000,
+            lan_access_enabled: true,
+            web_ui_dir: Some(web_dir),
+            shutdown_tx: shutdown_tx.clone(),
+        };
+        let app = build_router(state.clone());
+
+        // Basic metadata & discovery endpoints
+        for uri in [
+            "/api/v1/capabilities",
+            "/api/v1/vision/status",
+            "/api/v1/remote-info",
+            "/api/v1/discovery/ndi",
+            "/api/v1/discovery/usb",
+            "/api/v1/cameras",
+            "/api/v1/integrations/vmix",
+            "/api/v1/integrations/streamdeck",
+            "/api/v1/integrations/buttons/config",
+        ] {
+            let r = app
+                .clone()
+                .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "GET {uri} failed");
+        }
+
+        // Static PWA fallback serves index.html
+        let pwa = app
+            .clone()
+            .oneshot(Request::get("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(pwa.status(), StatusCode::OK);
+
+        // ONVIF resolve failure path -> 502 Bad Gateway
+        let onvif_err = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/onvif/resolve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"host":"127.0.0.1","port":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(onvif_err.status(), StatusCode::BAD_GATEWAY);
+
+        // Create enabled live demo camera with nil UUID (tests auto-UUID assignment) & Mock PTZ
+        let mut cam = CameraConfig::new_demo("Live API Cam", "smpte");
+        cam.id = Uuid::nil();
+        cam.source = vc_core::VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 320,
+            height: 180,
+            fps: 30,
+        };
+        cam.ptz = PtzConfig::Mock;
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/cameras")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&cam).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let saved: CameraConfig =
+            serde_json::from_slice(&created.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert!(!saved.id.is_nil());
+        let id = saved.id;
+
+        // Wait until snapshot.jpg returns 200 OK (may briefly return 503 while first frame renders)
+        let mut got_jpeg = false;
+        for _ in 0..80 {
+            let snap = app
+                .clone()
+                .oneshot(
+                    Request::get(format!("/api/v1/cameras/{id}/snapshot.jpg"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            if snap.status() == StatusCode::OK {
+                got_jpeg = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+        assert!(got_jpeg, "expected live JPEG snapshot");
+
+        // MJPEG stream happy path (read 1 chunk) + 404 on missing id
+        let mjpeg_404 = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/v1/cameras/{}/stream.mjpeg", Uuid::new_v4()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mjpeg_404.status(), StatusCode::NOT_FOUND);
+
+        let mjpeg_ok = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/v1/cameras/{id}/stream.mjpeg?max_fps=15"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mjpeg_ok.status(), StatusCode::OK);
+        let first_chunk = tokio::time::timeout(Duration::from_secs(3), mjpeg_ok.into_body().frame())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .into_data()
+            .unwrap();
+        assert!(first_chunk.starts_with(b"--vcframe\r\n"));
+
+        // Per-camera PUT/POST control endpoints
+        let ndi_resp = app
+            .clone()
+            .oneshot(
+                Request::put(format!("/api/v1/cameras/{id}/ndi-output"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&NdiOutputConfig::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ndi_resp.status(), StatusCode::OK);
+
+        let framing_resp = app
+            .clone()
+            .oneshot(
+                Request::put(format!("/api/v1/cameras/{id}/framing"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&FramingConfig::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(framing_resp.status(), StatusCode::OK);
+
+        let color_resp = app
+            .clone()
+            .oneshot(
+                Request::put(format!("/api/v1/cameras/{id}/color"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&ColorAdjustments::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(color_resp.status(), StatusCode::OK);
+
+        let vmix_bind = app
+            .clone()
+            .oneshot(
+                Request::put(format!("/api/v1/cameras/{id}/vmix"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"input_ref":"1"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(vmix_bind.status(), StatusCode::OK);
+
+        // Tracking select: track_id, norm_x/y, clear, and empty
+        for body in [
+            r#"{"track_id":101}"#,
+            r#"{"norm_x":0.5,"norm_y":0.5}"#,
+            r#"{"clear":true}"#,
+            r#"{}"#,
+        ] {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::post(format!("/api/v1/cameras/{id}/tracking/select"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK);
+        }
+
+        // PTZ move, stop, focus, imaging, preset store & recall, calibrate (Mock PTZ happy path)
+        for (path, body) in [
+            (format!("/api/v1/cameras/{id}/ptz/move"), r#"{"pan":0.4,"tilt":-0.2,"zoom":0.1}"#),
+            (format!("/api/v1/cameras/{id}/ptz/stop"), ""),
+            (format!("/api/v1/cameras/{id}/ptz/focus"), r#"{"action":"one_push"}"#),
+            (format!("/api/v1/cameras/{id}/imaging"), r#"{"control":"white_balance_auto"}"#),
+            (format!("/api/v1/cameras/{id}/ptz/preset"), r#"{"action":"store","slot":1}"#),
+            (format!("/api/v1/cameras/{id}/ptz/preset"), r#"{"action":"recall","slot":1}"#),
+        ] {
+            let mut b = Request::post(&path);
+            if !body.is_empty() {
+                b = b.header(header::CONTENT_TYPE, "application/json");
+            }
+            let r = app.clone().oneshot(b.body(Body::from(body)).unwrap()).await.unwrap();
+            assert_eq!(r.status(), StatusCode::NO_CONTENT, "POST {path} failed");
+        }
+
+        let cal = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/api/v1/cameras/{id}/ptz/calibrate"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cal.status(), StatusCode::OK);
+
+        // Integrations config PUTs
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::put("/api/v1/integrations/vmix/config")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&VmixConfig::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::put("/api/v1/integrations/streamdeck/config")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&StreamDeckConfig::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::put("/api/v1/integrations/buttons/config")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&BitfocusButtonsConfig::default()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Stream Deck trigger across ALL surface actions (happy + disabled vMix 400 error)
+        let actions = vec![
+            StreamDeckAction::ToggleAutoTrack { camera_index: 0 },
+            StreamDeckAction::SetFramingPreset { camera_index: 0, preset: FramingPreset::CloseUp },
+            StreamDeckAction::SetRuleOfThirds { camera_index: 0, thirds: RuleOfThirds::LeftThird },
+            StreamDeckAction::TriggerOnePushAf { camera_index: 0 },
+            StreamDeckAction::RecallPreset { camera_index: 0, slot: 1 },
+            StreamDeckAction::ToggleNdiOut { camera_index: 0 },
+            StreamDeckAction::DialZoomStep { camera_index: 0, delta: 0.2 },
+            StreamDeckAction::DialFocusStep { camera_index: 0, delta: 0.2 },
+            StreamDeckAction::DialFocusStep { camera_index: 0, delta: -0.2 },
+            StreamDeckAction::DialExposureStep { camera_index: 0, delta: 0.1 },
+            StreamDeckAction::DialWhiteBalanceStep { camera_index: 0, delta: -0.1 },
+        ];
+        for act in actions {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::post("/api/v1/integrations/streamdeck/trigger")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(serde_json::to_string(&act).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::NO_CONTENT);
+        }
+
+        // Disabled vMix Cut/Fade via StreamDeck -> 400 Bad Request
+        for err_act in [
+            StreamDeckAction::VmixCut { input: "1".into() },
+            StreamDeckAction::VmixFade { input: "1".into(), duration_ms: 500 },
+        ] {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::post("/api/v1/integrations/streamdeck/trigger")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(serde_json::to_string(&err_act).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        }
+
+        // OSC UDP listener dispatch across all OSC routes
+        let osc_sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let osc_port = osc_sock.local_addr().unwrap().port();
+        drop(osc_sock);
+        let osc_task = tokio::spawn(run_osc_listener(osc_port, state.clone()));
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        let sender = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let osc_msgs = vec![
+            rosc::OscMessage { addr: "/cam/0/track/toggle".into(), args: vec![] },
+            rosc::OscMessage { addr: "/cam/0/framing/preset".into(), args: vec![rosc::OscType::String("close_up".into())] },
+            rosc::OscMessage { addr: "/cam/0/framing/preset".into(), args: vec![rosc::OscType::String("full_height".into())] },
+            rosc::OscMessage { addr: "/cam/0/framing/thirds".into(), args: vec![rosc::OscType::String("right_third".into())] },
+            rosc::OscMessage { addr: "/cam/0/framing/thirds".into(), args: vec![rosc::OscType::String("auto_lead_room".into())] },
+            rosc::OscMessage { addr: "/cam/0/focus/one_push".into(), args: vec![] },
+            rosc::OscMessage { addr: "/cam/0/preset/recall".into(), args: vec![rosc::OscType::Int(1)] },
+            rosc::OscMessage { addr: "/cam/0/ndi/toggle".into(), args: vec![] },
+            rosc::OscMessage { addr: "/vmix/cut".into(), args: vec![rosc::OscType::Int(1)] },
+            rosc::OscMessage { addr: "/vmix/fade".into(), args: vec![rosc::OscType::String("2".into())] },
+            rosc::OscMessage { addr: "/unknown/route".into(), args: vec![] },
+        ];
+        for msg in osc_msgs {
+            let bytes = rosc::encoder::encode(&rosc::OscPacket::Message(msg)).unwrap();
+            let _ = sender.send_to(&bytes, format!("127.0.0.1:{osc_port}")).await;
+        }
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        osc_task.abort();
+
+        // PUT camera update (enabled -> disabled stops workers cleanly)
+        let mut disabled = saved.clone();
+        disabled.enabled = false;
+        let put_resp = app
+            .clone()
+            .oneshot(
+                Request::put(format!("/api/v1/cameras/{id}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_string(&disabled).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(put_resp.status(), StatusCode::OK);
+
+        // Helpers coverage
+        let _ = DaemonOptions::from_env();
+        let _ = resolve_web_ui_dir();
+        let _ = detect_lan_ipv4_addresses();
+
+        tracking.stop_all_cameras().await;
+        media.stop_all_cameras().await;
+    }
+
+    #[tokio::test]
+    async fn live_daemon_serves_telemetry_and_h264_websockets_and_shuts_down_cleanly() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("live_daemon.db");
+
+        // Reserve ephemeral free HTTP & OSC ports, store in SQLite before starting run_daemon
+        let tmp_tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let http_port = tmp_tcp.local_addr().unwrap().port();
+        drop(tmp_tcp);
+        let tmp_udp = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let osc_port = tmp_udp.local_addr().unwrap().port();
+        drop(tmp_udp);
+
+        let store = ConfigStore::load_or_create(&db_path).unwrap();
+        let cam_id = Uuid::new_v4();
+        drop(store);
+        assert!(seed_isolated_daemon_db(&db_path, cam_id, http_port, osc_port));
+
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+        let daemon_tx = shutdown_tx.clone();
+        let daemon_task = tokio::spawn(async move {
+            run_daemon(
+                DaemonOptions {
+                    config_path: Some(db_path),
+                    web_ui_dir: None,
+                    bind_addr_override: Some("127.0.0.1".into()),
+                },
+                daemon_tx,
+            )
+            .await
+        });
+
+        // Wait for daemon TCP port to come up
+        let mut connected = false;
+        for _ in 0..40 {
+            if tokio::time::timeout(
+                Duration::from_millis(150),
+                tokio::net::TcpStream::connect(("127.0.0.1", http_port)),
+            )
+            .await
+            .map(|r| r.is_ok())
+            .unwrap_or(false)
+            {
+                connected = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(connected, "daemon did not bind HTTP listener in time");
+
+        // 1) Connect raw RFC 6455 WebSocket to /ws/telemetry and verify 101 + Capabilities payload
+        let mut ws_telem = tokio::net::TcpStream::connect(("127.0.0.1", http_port))
+            .await
+            .unwrap();
+        let req = format!(
+            "GET /ws/telemetry HTTP/1.1\r\nHost: 127.0.0.1:{http_port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        );
+        ws_telem.write_all(req.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(3), ws_telem.read(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        let resp_str = String::from_utf8_lossy(&buf[..n]);
+        assert!(resp_str.contains("101 Switching Protocols"));
+        // Read one more chunk to ensure TelemetryBatch tick runs
+        let _ = tokio::time::timeout(Duration::from_millis(200), ws_telem.read(&mut buf)).await;
+        drop(ws_telem);
+
+        // 2) Connect raw RFC 6455 WebSocket to /ws/video/{cam_id} and verify 101 + H.264 config/packet or fallback
+        let mut ws_vid = tokio::net::TcpStream::connect(("127.0.0.1", http_port))
+            .await
+            .unwrap();
+        let vid_req = format!(
+            "GET /ws/video/{cam_id} HTTP/1.1\r\nHost: 127.0.0.1:{http_port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        );
+        ws_vid.write_all(vid_req.as_bytes()).await.unwrap();
+        let n2 = tokio::time::timeout(Duration::from_secs(3), ws_vid.read(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n2]).contains("101 Switching Protocols"));
+        let _ = tokio::time::timeout(Duration::from_secs(3), ws_vid.read(&mut buf)).await;
+        drop(ws_vid);
+
+        // 3) Request graceful shutdown and verify run_daemon exits cleanly with Ok(())
+        let _ = shutdown_tx.send(true);
+        let res = tokio::time::timeout(Duration::from_secs(6), daemon_task)
+            .await
+            .expect("daemon should shut down cleanly")
+            .unwrap();
+        assert!(res.is_ok());
+    }
+
+    fn seed_isolated_daemon_db(db_path: &PathBuf, cam_id: CameraId, http_port: u16, osc_port: u16) -> bool {
+        let legacy_json = db_path.with_extension("json");
+        let mut cfg = vc_core::AppConfig::default();
+        cfg.server.http_port = http_port;
+        cfg.server.osc_port = osc_port;
+        cfg.server.lan_access_enabled = false;
+        cfg.cameras.clear();
+        let mut cam = CameraConfig::new_demo("WS Cam", "smpte");
+        cam.id = cam_id;
+        cam.source = vc_core::VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 320,
+            height: 180,
+            fps: 30,
+        };
+        cfg.cameras.push(cam);
+        let _ = std::fs::remove_file(db_path);
+        let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
+        std::fs::write(&legacy_json, serde_json::to_string(&cfg).unwrap()).is_ok()
+            && ConfigStore::load_or_create(&legacy_json).is_ok()
+    }
 }

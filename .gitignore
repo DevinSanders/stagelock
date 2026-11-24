@@ -5,12 +5,15 @@ Cargo.lock
 # Node / Tauri
 node_modules/
 apps/desktop/dist/
+apps/desktop/coverage/
 apps/desktop/release/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/
 dist-release/
 integrations/companion-module/dist/
 *.tsbuildinfo
+*.profraw
+*.profdata
 
 # Local runtime & downloaded AI models
 models/*.onnx

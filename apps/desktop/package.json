@@ -10,6 +10,9 @@
     "dev": "tauri dev",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "tauri": "tauri",
     "package:win": "tauri build --bundles nsis,msi",
     "package:mac": "tauri build --bundles dmg",
@@ -24,10 +27,16 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
+    "@vitest/coverage-v8": "^5.1.1",
+    "jsdom": "^31.0.1",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^5.1.1"
   }
 }

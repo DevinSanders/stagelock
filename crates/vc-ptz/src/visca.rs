@@ -312,4 +312,76 @@ mod tests {
         let sharp_low = ViscaIpDriver::encode_imaging(ImagingCommand::Sharpness { level: -5.0 });
         assert_eq!(sharp_low[0][7], 0x00, "negative sharpness must clamp to 0x00");
     }
+
+    #[test]
+    fn encodes_all_focus_and_imaging_variants() {
+        assert_eq!(ViscaIpDriver::encode_focus(FocusCommand::Auto)[4], 0x02);
+        assert_eq!(ViscaIpDriver::encode_focus(FocusCommand::Manual)[4], 0x03);
+        assert_eq!(ViscaIpDriver::encode_focus(FocusCommand::Far { speed: 1.0 })[4], 0x27);
+        assert_eq!(ViscaIpDriver::encode_focus(FocusCommand::Near { speed: 0.5 })[4], 0x34);
+        assert_eq!(ViscaIpDriver::encode_focus(FocusCommand::Stop)[4], 0x00);
+
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::WhiteBalanceAuto)[0][4], 0x00);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::WhiteBalanceIndoor)[0][4], 0x01);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::WhiteBalanceOutdoor)[0][4], 0x02);
+        let manual_wb = ViscaIpDriver::encode_imaging(ImagingCommand::WhiteBalanceManual {
+            red: 1.0,
+            blue: 0.0,
+        });
+        assert_eq!(manual_wb.len(), 3);
+        assert_eq!(manual_wb[1][6..8], [0x0F, 0x0F]);
+        assert_eq!(manual_wb[2][6..8], [0x00, 0x00]);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::ExposureAuto)[0][4], 0x00);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::ExposureManual { level: 0.5 }).len(), 2);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::BacklightComp { enabled: false })[0][4], 0x03);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::Contrast { level: 1.0 })[0][7], 0x0E);
+        assert_eq!(ViscaIpDriver::encode_imaging(ImagingCommand::Brightness { level: 0.5 })[0][7], 0x07);
+    }
+
+    #[tokio::test]
+    async fn visca_udp_and_tcp_transports_send_and_handle_tcp_failure() {
+        // Sony UDP loopback
+        let udp_srv = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let udp_port = udp_srv.local_addr().unwrap().port();
+        let sony = ViscaIpDriver::new("127.0.0.1", udp_port, ViscaTransport::SonyUdp);
+        assert_eq!(sony.protocol_name(), "visca_ip_sony");
+        sony.pan_tilt_speed(0.5, 0.2).await.unwrap();
+        let mut buf = [0u8; 64];
+        let (n, _) = udp_srv.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[0..2], &[0x01, 0x00]);
+        assert_eq!(n, 8 + 9);
+
+        // Raw UDP loopback
+        let raw_udp = ViscaIpDriver::new("127.0.0.1", udp_port, ViscaTransport::RawUdp);
+        assert_eq!(raw_udp.protocol_name(), "visca_ip_raw_udp");
+        raw_udp.zoom_speed(0.5).await.unwrap();
+        let (n, _) = udp_srv.recv_from(&mut buf).await.unwrap();
+        assert_eq!(buf[0], 0x81);
+        assert_eq!(n, 6);
+        raw_udp.stop().await.unwrap();
+        raw_udp.focus(FocusCommand::OnePush).await.unwrap();
+        raw_udp.recall_preset(1).await.unwrap();
+        raw_udp.store_preset(2).await.unwrap();
+        raw_udp.set_imaging(ImagingCommand::WhiteBalanceOnePush).await.unwrap();
+
+        // Raw TCP loopback happy path
+        let tcp_srv = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tcp_port = tcp_srv.local_addr().unwrap().port();
+        let accept_task = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let (mut s, _) = tcp_srv.accept().await.unwrap();
+            let mut b = Vec::new();
+            let _ = s.read_to_end(&mut b).await;
+            b
+        });
+        let raw_tcp = ViscaIpDriver::new("127.0.0.1", tcp_port, ViscaTransport::RawTcp);
+        assert_eq!(raw_tcp.protocol_name(), "visca_ip_raw_tcp");
+        raw_tcp.recall_preset(4).await.unwrap();
+        let received = accept_task.await.unwrap();
+        assert_eq!(received, ViscaIpDriver::encode_preset(false, 4));
+
+        // Failure path: TCP connection refused on closed port
+        let closed_tcp = ViscaIpDriver::new("127.0.0.1", 1, ViscaTransport::RawTcp);
+        assert!(closed_tcp.stop().await.is_err());
+    }
 }

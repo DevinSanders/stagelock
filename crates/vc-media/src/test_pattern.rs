@@ -183,3 +183,28 @@ fn draw_filled_rect(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_smpte_ball_and_default_stage_patterns_with_locked_subject() {
+        let mut buf = vec![0u8; 320 * 180 * 4];
+        let smpte_subs = render_demo_frame(320, 180, "smpte", 10, Some(101), &mut buf);
+        assert_eq!(smpte_subs.len(), 2);
+        assert!(smpte_subs[0].is_locked);
+        assert!(smpte_subs[0].identity_similarity.is_some());
+        assert!(!smpte_subs[1].is_locked);
+        assert!(smpte_subs[1].identity_similarity.is_none());
+        assert_eq!(smpte_subs[0].keypoints.len(), 9);
+        assert_eq!(buf[3], 255); // alpha set
+
+        let ball_subs = render_demo_frame(320, 180, "ball", 45, Some(102), &mut buf);
+        assert_eq!(ball_subs.len(), 2);
+        assert!(ball_subs[1].is_locked);
+
+        let stage_subs = render_demo_frame(320, 180, "stage", 90, None, &mut buf);
+        assert!(stage_subs.iter().all(|s| !s.is_locked));
+    }
+}

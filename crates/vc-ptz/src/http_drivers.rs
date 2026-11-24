@@ -234,4 +234,105 @@ mod tests {
         assert_eq!(PanasonicAwDriver::encode_aw_speed(0.01), 50);
         assert_eq!(PanasonicAwDriver::encode_aw_speed(-0.015), 50);
     }
+
+    async fn spawn_http_mock(status: &'static str) -> (u16, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let _ = stream.read(&mut buf).await;
+                    let resp = format!("HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK");
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        (port, handle)
+    }
+
+    #[tokio::test]
+    async fn canon_xc_and_panasonic_aw_cover_all_commands_and_http_errors() {
+        let (ok_port, ok_srv) = spawn_http_mock("200 OK").await;
+        let (err_port, err_srv) = spawn_http_mock("500 Internal Server Error").await;
+
+        // Canon XC happy path (with basic auth)
+        let canon = CanonXcDriver::new("127.0.0.1", ok_port, "admin", "secret");
+        assert_eq!(canon.protocol_name(), "canon_xc");
+        canon.pan_tilt_speed(0.6, -0.4).await.unwrap();
+        canon.pan_tilt_speed(-0.5, 0.5).await.unwrap();
+        canon.pan_tilt_speed(0.0, 0.0).await.unwrap();
+        canon.zoom_speed(0.5).await.unwrap();
+        canon.zoom_speed(-0.5).await.unwrap();
+        canon.zoom_speed(0.0).await.unwrap();
+        canon.stop().await.unwrap();
+        for f in [
+            FocusCommand::Auto,
+            FocusCommand::Manual,
+            FocusCommand::OnePush,
+            FocusCommand::Near { speed: 0.4 },
+            FocusCommand::Far { speed: 0.4 },
+            FocusCommand::Stop,
+        ] {
+            canon.focus(f).await.unwrap();
+        }
+        canon.recall_preset(1).await.unwrap();
+        canon.store_preset(2).await.unwrap();
+        for img in [
+            ImagingCommand::WhiteBalanceAuto,
+            ImagingCommand::WhiteBalanceIndoor,
+            ImagingCommand::WhiteBalanceOutdoor,
+            ImagingCommand::WhiteBalanceOnePush,
+            ImagingCommand::ExposureAuto,
+            ImagingCommand::ExposureManual { level: 0.5 },
+            ImagingCommand::Sharpness { level: 0.5 }, // no-op branch
+        ] {
+            canon.set_imaging(img).await.unwrap();
+        }
+
+        // Canon XC failure path (HTTP 500)
+        let canon_err = CanonXcDriver::new("127.0.0.1", err_port, "", "");
+        assert!(canon_err.stop().await.is_err());
+
+        // Panasonic AW happy path
+        let pana = PanasonicAwDriver::new("127.0.0.1", ok_port);
+        assert_eq!(pana.protocol_name(), "panasonic_aw");
+        pana.pan_tilt_speed(0.5, -0.5).await.unwrap();
+        pana.zoom_speed(0.4).await.unwrap();
+        pana.stop().await.unwrap();
+        for f in [
+            FocusCommand::Auto,
+            FocusCommand::Manual,
+            FocusCommand::OnePush,
+            FocusCommand::Near { speed: 0.5 },
+            FocusCommand::Far { speed: 0.5 },
+            FocusCommand::Stop,
+        ] {
+            pana.focus(f).await.unwrap();
+        }
+        pana.recall_preset(3).await.unwrap();
+        pana.store_preset(4).await.unwrap();
+        for img in [
+            ImagingCommand::WhiteBalanceAuto,
+            ImagingCommand::WhiteBalanceIndoor,
+            ImagingCommand::WhiteBalanceOutdoor,
+            ImagingCommand::WhiteBalanceOnePush,
+            ImagingCommand::ExposureAuto,
+            ImagingCommand::ExposureManual { level: 0.5 },
+            ImagingCommand::Brightness { level: 0.5 }, // no-op branch
+        ] {
+            pana.set_imaging(img).await.unwrap();
+        }
+
+        // Panasonic AW failure path (HTTP 500)
+        let pana_err = PanasonicAwDriver::new("127.0.0.1", err_port);
+        assert!(pana_err.stop().await.is_err());
+
+        ok_srv.abort();
+        err_srv.abort();
+    }
 }

@@ -504,4 +504,78 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("disabled"));
     }
+
+    #[tokio::test]
+    async fn refresh_xml_execute_and_update_config_cover_http_success_and_error_paths() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let xml_body = r#"<vmix><version>28.0</version><inputs><input key="k1" number="1" type="NDI" title="Cam 1" shortTitle="C1" state="Running"/></inputs><active>1</active><preview>1</preview><recording>False</recording><streaming>True</streaming></vmix>"#;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let xml_owned = xml_body.to_string();
+        let server = tokio::spawn(async move {
+            let responses = vec![
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", xml_owned.len(), xml_owned),
+                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".to_string(),
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", xml_owned.len(), xml_owned),
+                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\n\r\nfail".to_string(),
+            ];
+            for resp in responses {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let client = VmixClient::new(VmixConfig {
+            enabled: true,
+            host: "127.0.0.1".into(),
+            http_port: port,
+            tcp_port: 1,
+        });
+
+        // 1. Refresh XML state happy path
+        let st = client.refresh_xml_state().await.unwrap();
+        assert_eq!(st.version.as_deref(), Some("28.0"));
+        assert!(st.streaming);
+        assert_eq!(resolve_camera_tally("C1", &st), TallyState::Program);
+
+        // 2. Execute Cut/Fade with all optional parameters happy path
+        client
+            .execute(&VmixSwitchCommand {
+                function: "Fade".into(),
+                input: Some("1".into()),
+                value: Some("100".into()),
+                duration_ms: Some(500),
+                mix: Some(1),
+            })
+            .await
+            .unwrap();
+
+        // 3. HTTP 500 error path
+        let err = client
+            .execute(&VmixSwitchCommand {
+                function: "Cut".into(),
+                input: Some("1".into()),
+                value: None,
+                duration_ms: None,
+                mix: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("500"));
+
+        // 4. Disable clears connected flag
+        client
+            .update_config(VmixConfig {
+                enabled: false,
+                ..Default::default()
+            })
+            .await;
+        assert!(!client.current_state().connected);
+
+        let _ = server.await;
+    }
 }

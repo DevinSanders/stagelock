@@ -665,4 +665,130 @@ mod tests {
     fn empty_username_returns_empty_wsse_header() {
         assert!(build_wsse_header("", "secret").is_empty());
     }
+
+    async fn spawn_onvif_mock_server(
+        include_imaging: bool,
+        status_override: Option<&'static str>,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = stream.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    if let Some(err_status) = status_override {
+                        let resp = format!(
+                            "HTTP/1.1 {err_status}\r\nContent-Length: 5\r\nConnection: close\r\n\r\nFault"
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                        return;
+                    }
+                    let body = if req.contains("GetCapabilities") {
+                        let img = if include_imaging {
+                            format!("<Imaging><XAddr>http://127.0.0.1:{port}/onvif/imaging_service</XAddr></Imaging>")
+                        } else {
+                            String::new()
+                        };
+                        format!(
+                            "<Envelope><Body><GetCapabilitiesResponse><Capabilities>\
+                             <Media><XAddr>http://127.0.0.1:{port}/onvif/media_service</XAddr></Media>\
+                             <PTZ><XAddr>http://127.0.0.1:{port}/onvif/ptz_service</XAddr></PTZ>\
+                             {img}\
+                             </Capabilities></GetCapabilitiesResponse></Body></Envelope>"
+                        )
+                    } else if req.contains("GetProfiles") {
+                        "<Envelope><Body><GetProfilesResponse>\
+                         <Profiles token=\"Prof_1\"><VideoSourceConfiguration><SourceToken>VS_1</SourceToken></VideoSourceConfiguration></Profiles>\
+                         </GetProfilesResponse></Body></Envelope>"
+                            .to_string()
+                    } else if req.contains("GetStreamUri") {
+                        "<Envelope><Body><GetStreamUriResponse><MediaUri><Uri>rtsp://127.0.0.1:554/stream1</Uri></MediaUri></GetStreamUriResponse></Body></Envelope>"
+                            .to_string()
+                    } else {
+                        "<Envelope><Body><Ok/></Body></Envelope>".to_string()
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/soap+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        (port, handle)
+    }
+
+    #[tokio::test]
+    async fn onvif_resolve_and_driver_cover_all_ptz_focus_imaging_and_errors() {
+        let (ok_port, ok_srv) = spawn_onvif_mock_server(true, None).await;
+        let info = resolve_onvif_camera("127.0.0.1", ok_port, "admin", "pass")
+            .await
+            .unwrap();
+        assert_eq!(info.profile_token, "Prof_1");
+        assert_eq!(info.video_source_token.as_deref(), Some("VS_1"));
+        assert_eq!(info.rtsp_uri.as_deref(), Some("rtsp://127.0.0.1:554/stream1"));
+        assert!(info.imaging_xaddr.is_some());
+
+        let drv = OnvifDriver::new("127.0.0.1", ok_port, "admin", "pass", None);
+        assert_eq!(drv.protocol_name(), "onvif");
+        drv.pan_tilt_speed(0.4, -0.3).await.unwrap();
+        drv.zoom_speed(0.5).await.unwrap();
+        drv.stop().await.unwrap();
+        drv.recall_preset(1).await.unwrap();
+        drv.store_preset(2).await.unwrap();
+
+        for f in [
+            FocusCommand::Auto,
+            FocusCommand::OnePush,
+            FocusCommand::Manual,
+            FocusCommand::Near { speed: 0.4 },
+            FocusCommand::Far { speed: 0.4 },
+            FocusCommand::Stop,
+        ] {
+            drv.focus(f).await.unwrap();
+        }
+
+        for img in [
+            ImagingCommand::WhiteBalanceAuto,
+            ImagingCommand::WhiteBalanceIndoor,
+            ImagingCommand::WhiteBalanceOutdoor,
+            ImagingCommand::WhiteBalanceOnePush,
+            ImagingCommand::WhiteBalanceManual { red: 0.5, blue: 0.6 },
+            ImagingCommand::ExposureAuto,
+            ImagingCommand::ExposureManual { level: 0.7 },
+            ImagingCommand::BacklightComp { enabled: true },
+            ImagingCommand::BacklightComp { enabled: false },
+            ImagingCommand::Sharpness { level: 0.5 },
+            ImagingCommand::Contrast { level: 0.5 },
+            ImagingCommand::Brightness { level: 0.5 },
+        ] {
+            drv.set_imaging(img).await.unwrap();
+        }
+
+        // Camera without Imaging service -> focus & set_imaging return clean error
+        let (noimg_port, noimg_srv) = spawn_onvif_mock_server(false, None).await;
+        let drv_noimg = OnvifDriver::new("127.0.0.1", noimg_port, "", "", None);
+        assert!(drv_noimg.focus(FocusCommand::Auto).await.is_err());
+        assert!(drv_noimg.set_imaging(ImagingCommand::ExposureAuto).await.is_err());
+
+        // HTTP 500 failure path -> resolve_onvif_camera & driver return error
+        let (err_port, err_srv) = spawn_onvif_mock_server(true, Some("500 Internal Server Error")).await;
+        assert!(resolve_onvif_camera("127.0.0.1", err_port, "admin", "pass").await.is_err());
+        let drv_err = OnvifDriver::new("127.0.0.1", err_port, "admin", "pass", Some("P_FALLBACK".into()));
+        assert!(drv_err.stop().await.is_err());
+
+        // Quick WS-Discovery timeout returns cleanly
+        let _ = discover_onvif_devices(25).await;
+
+        ok_srv.abort();
+        noimg_srv.abort();
+        err_srv.abort();
+    }
 }

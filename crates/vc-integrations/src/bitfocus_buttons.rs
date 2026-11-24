@@ -85,4 +85,75 @@ mod tests {
         let err = client.post_control(&cfg, &req).await.unwrap_err();
         assert!(err.to_string().contains("disabled"));
     }
+
+    #[tokio::test]
+    async fn post_control_handles_json_raw_text_and_http_500_from_mock_server() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server = tokio::spawn(async move {
+            for response in [
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\n\r\n{\"fired\":true}",
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nOK",
+                "HTTP/1.1 401 Unauthorized\r\nContent-Length: 11\r\n\r\nbad api key",
+            ] {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let client = BitfocusButtonsClient::default();
+        let cfg = BitfocusButtonsConfig {
+            enabled: true,
+            base_url: format!("http://127.0.0.1:{port}/"),
+            api_key: "tok-xyz".into(),
+        };
+
+        // 1. JSON 200 response with leading slash
+        let r1 = client
+            .post_control(
+                &cfg,
+                &ButtonsTriggerRequest {
+                    endpoint: "/control/cuelist/v1/go".into(),
+                    payload: serde_json::json!({ "id": 1 }),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1["fired"], true);
+
+        // 2. Raw non-JSON 200 response without leading slash
+        let r2 = client
+            .post_control(
+                &cfg,
+                &ButtonsTriggerRequest {
+                    endpoint: "control/surface/v1/press".into(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2["ok"], true);
+        assert_eq!(r2["raw"], "OK");
+
+        // 3. HTTP 401 failure path
+        let err = client
+            .post_control(
+                &cfg,
+                &ButtonsTriggerRequest {
+                    endpoint: "/control/fail".into(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("401"));
+
+        let _ = server.await;
+    }
 }

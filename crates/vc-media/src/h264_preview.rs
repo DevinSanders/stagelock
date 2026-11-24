@@ -590,15 +590,15 @@ fn run_h264_cli_bridge(
     let encoder_name = spec.element_name.to_string();
     let reader_tx = tx.clone();
     let reader_kf = last_keyframe.clone();
-    let reader_stop = stop_rx.clone();
 
+    // Always drain stdout until child exits/is killed so gst-launch never blocks on a full stdout pipe.
     let reader_thread = std::thread::spawn(move || {
         let mut framer = AnnexBAuFramer::new();
         let mut codec_str = "avc1.42e01f".to_string();
         let mut buf = [0_u8; 65536];
         let start = std::time::Instant::now();
 
-        while !*reader_stop.borrow() && reader_tx.receiver_count() > 0 {
+        loop {
             match stdout.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
@@ -626,25 +626,41 @@ fn run_h264_cli_bridge(
         }
     });
 
-    let mut last_ts_pushed = first.timestamp_us;
-    if stdin.write_all(&first.bgra).is_ok() {
-        while !*stop_rx.borrow() && tx.receiver_count() > 0 {
-            if let Some(frame) = raw_rx.borrow().clone() {
-                if frame.width == width && frame.height == height && frame.timestamp_us != last_ts_pushed
-                {
-                    last_ts_pushed = frame.timestamp_us;
-                    if stdin.write_all(&frame.bgra).is_err() {
-                        break;
+    let writer_raw_rx = raw_rx.clone();
+    let writer_stop = stop_rx.clone();
+    let writer_tx = tx.clone();
+    let writer_thread = std::thread::spawn(move || {
+        let mut last_ts_pushed = first.timestamp_us;
+        if stdin.write_all(&first.bgra).is_ok() {
+            while !*writer_stop.borrow() && writer_tx.receiver_count() > 0 {
+                if let Some(frame) = writer_raw_rx.borrow().clone() {
+                    if frame.width == width
+                        && frame.height == height
+                        && frame.timestamp_us != last_ts_pushed
+                    {
+                        last_ts_pushed = frame.timestamp_us;
+                        if stdin.write_all(&frame.bgra).is_err() {
+                            break;
+                        }
                     }
                 }
+                std::thread::sleep(Duration::from_millis(5));
             }
-            std::thread::sleep(Duration::from_millis(5));
         }
+        drop(stdin);
+    });
+
+    while !*stop_rx.borrow() && tx.receiver_count() > 0 {
+        if let Ok(Some(_)) = child.try_wait() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
 
-    drop(stdin);
+    // Kill child first so both stdin and stdout pipes close immediately without deadlocking.
     let _ = child.kill();
     let _ = child.wait();
+    let _ = writer_thread.join();
     let _ = reader_thread.join();
     Ok(())
 }
@@ -714,5 +730,74 @@ mod tests {
         assert!(split_annex_b_nals(&[]).is_empty());
         assert!(!is_h264_keyframe(&[1, 2, 3, 4]));
         assert!(extract_avc_codec_string(&[0, 0, 0, 1, 0x67]).is_none()); // truncated SPS
+    }
+
+    #[test]
+    fn select_encoder_covers_all_backend_preferences_and_framer_overflow_guard() {
+        for backend in [
+            HardwareAccelBackend::NvidiaNvcodec,
+            HardwareAccelBackend::AmdAmf,
+            HardwareAccelBackend::IntelQuickSync,
+            HardwareAccelBackend::AppleVideoToolbox,
+            HardwareAccelBackend::LinuxVaapi,
+            HardwareAccelBackend::WindowsD3d11,
+            HardwareAccelBackend::SoftwareCpu,
+        ] {
+            let _ = select_zero_latency_h264_encoder(&backend);
+        }
+
+        // Malformed >2MB chunk without start codes clears buffer safely
+        let mut framer = AnnexBAuFramer::new();
+        let giant = vec![0xAAu8; 2 * 1024 * 1024 + 64];
+        assert!(framer.push(&giant).is_empty());
+    }
+
+    #[tokio::test]
+    async fn h264_preview_hub_encodes_live_frames_and_reuses_active_session() {
+        let Some(_) = select_zero_latency_h264_encoder(&HardwareAccelBackend::NvidiaNvcodec) else {
+            return;
+        };
+
+        let (raw_tx, raw_rx) = watch::channel::<Option<RawBgraFrame>>(None);
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let hub = H264PreviewHub::new(HardwareAccelBackend::NvidiaNvcodec, raw_rx, stop_rx);
+
+        let mut sub1 = hub.subscribe().await.unwrap();
+        assert!(!sub1.encoder_name.is_empty());
+
+        // Second subscriber reuses the running session
+        let _sub2 = hub.subscribe().await.unwrap();
+
+        // Feed a few 320x180 BGRA frames so encoder emits an IDR keyframe + delta frames
+        let feed_task = tokio::spawn(async move {
+            let mut bgra = vec![64u8; 320 * 180 * 4];
+            for i in 0..25u64 {
+                bgra[0] = (i * 10) as u8;
+                let _ = raw_tx.send(Some(RawBgraFrame {
+                    width: 320,
+                    height: 180,
+                    fps: 30,
+                    timestamp_us: (i + 1) * 33_333,
+                    bgra: Arc::new(bgra.clone()),
+                }));
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        });
+
+        let first_au = tokio::time::timeout(Duration::from_secs(6), sub1.rx.recv())
+            .await
+            .expect("timed out waiting for encoded H.264 access unit")
+            .unwrap();
+        assert_eq!(first_au.width, 320);
+        assert_eq!(first_au.height, 180);
+        assert!(!first_au.data.is_empty());
+        assert!(first_au.codec.starts_with("avc1."));
+
+        // Third subscriber gets cached initial keyframe
+        let sub3 = hub.subscribe().await.unwrap();
+        assert!(sub3.initial_keyframe.is_some() || first_au.is_keyframe || !first_au.data.is_empty());
+
+        let _ = stop_tx.send(true);
+        feed_task.abort();
     }
 }

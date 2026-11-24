@@ -472,4 +472,65 @@ Device found:
                 .is_err()
         );
     }
+
+    #[test]
+    fn builds_bgra_capture_pipelines_for_all_supported_sources_and_backends() {
+        let backends = [
+            HardwareAccelBackend::NvidiaNvcodec,
+            HardwareAccelBackend::IntelQuickSync,
+            HardwareAccelBackend::WindowsD3d11,
+            HardwareAccelBackend::AppleVideoToolbox,
+            HardwareAccelBackend::LinuxVaapi,
+            HardwareAccelBackend::AmdAmf,
+            HardwareAccelBackend::SoftwareCpu,
+        ];
+        let sources = vec![
+            VideoSourceConfig::Rtsp { url: "rtsp://10.0.0.1/live".into(), latency_ms: 25, prefer_tcp: true },
+            VideoSourceConfig::Rtsp { url: "rtsp://10.0.0.1/live".into(), latency_ms: 25, prefer_tcp: false },
+            VideoSourceConfig::Rtp { address: "239.0.0.1".into(), port: 5004, codec: "H264".into() },
+            VideoSourceConfig::Onvif {
+                host: "10.0.0.5".into(),
+                port: 80,
+                username: String::new(),
+                password: String::new(),
+                resolved_rtsp_url: None,
+            },
+            VideoSourceConfig::Onvif {
+                host: "10.0.0.5".into(),
+                port: 80,
+                username: String::new(),
+                password: String::new(),
+                resolved_rtsp_url: Some("rtsp://10.0.0.5/custom".into()),
+            },
+            VideoSourceConfig::WebRtc { whep_url: "https://example.local/whep".into(), bearer_token: None },
+            VideoSourceConfig::Usb { device_id: "0".into(), device_name: "Default".into(), width: 1280, height: 720, fps: 30 },
+            VideoSourceConfig::Usb { device_id: r"\\?\usb#vid_1234".into(), device_name: "Cam".into(), width: 1280, height: 720, fps: 30 },
+            VideoSourceConfig::DeckLink { device_index: 1, connection: "hdmi".into(), mode: "1080p60".into() },
+        ];
+        for (idx, src) in sources.iter().enumerate() {
+            let backend = &backends[idx % backends.len()];
+            let (spec, label, _hw) = build_bgra_capture_pipeline(src, backend, 640, 360, 30).unwrap();
+            assert!(spec.contains("format=BGRA,width=640,height=360,framerate=30/1"));
+            assert!(!label.is_empty());
+        }
+
+        // Failure path: missing binary returns None; GstFrameSource::start rejects TestPattern
+        assert!(find_gst_binary("definitely-nonexistent-gst-binary-xyz").is_none());
+        let invalid = VideoSourceConfig::TestPattern {
+            pattern: "smpte".into(),
+            width: 320,
+            height: 180,
+            fps: 15,
+        };
+        assert!(GstFrameSource::start(&invalid, &HardwareAccelBackend::SoftwareCpu, 320, 180, 15).is_err());
+
+        // Exercise device discovery helper (works with or without GStreamer installed)
+        let _ = discover_capture_devices();
+
+        #[cfg(not(feature = "gst-native"))]
+        {
+            let args = split_pipeline_args(r#"rtspsrc location="rtsp://a b/1" ! fdsink fd=1"#);
+            assert_eq!(args, vec!["rtspsrc", "location=rtsp://a b/1", "!", "fdsink", "fd=1"]);
+        }
+    }
 }

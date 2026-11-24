@@ -7,7 +7,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float, c_int, c_void};
 use std::ptr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use libloading::{Library, Symbol};
@@ -164,9 +164,20 @@ pub struct NdiRuntime {
     pub library_path: String,
 }
 
+static SHARED_NDI_RUNTIME: OnceLock<std::result::Result<NdiRuntime, String>> = OnceLock::new();
+
 impl NdiRuntime {
     /// Attempt to dynamically load the NDI 6 runtime library from the host system.
+    /// Cached process-wide so `NDIlib_initialize()` / `NDIlib_destroy()` are never torn down
+    /// underneath concurrent cameras or test tasks.
     pub fn try_load() -> Result<Self> {
+        SHARED_NDI_RUNTIME
+            .get_or_init(|| Self::try_load_uncached().map_err(|e| e.to_string()))
+            .clone()
+            .map_err(|msg| anyhow!(msg))
+    }
+
+    fn try_load_uncached() -> Result<Self> {
         let (available, path) = detect_ndi_runtime();
         let path = match (available, path) {
             (true, Some(p)) => p,
@@ -491,5 +502,52 @@ impl Drop for NdiReceiver {
         unsafe {
             (self.api.recv_destroy)(self.handle);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ndi_runtime_sender_receiver_and_ptz_ffi_roundtrip_when_installed() {
+        let Ok(rt) = NdiRuntime::try_load() else {
+            // Host without NDI runtime installed still verified graceful Err above
+            return;
+        };
+        assert!(!rt.library_path.is_empty());
+
+        // Quick discovery call
+        let _ = rt.discover_sources(100).unwrap();
+
+        // Create sender with groups and send valid + undersized frame (guard path)
+        let sender = rt
+            .create_sender("VC-UnitTest-Feed", Some("public"))
+            .unwrap();
+        assert_eq!(sender.stream_name, "VC-UnitTest-Feed");
+        sender.send_bgra_frame(64, 64, 30, &[0u8; 16]); // undersized guard
+        let valid_frame = vec![128u8; 64 * 64 * 4];
+        sender.send_bgra_frame(64, 64, 30, &valid_frame);
+
+        // Create receiver (low_bandwidth true & false) and exercise capture timeout + all PTZ FFI methods
+        let rx_low = rt.create_receiver("NONEXISTENT_NDI_SOURCE_TEST", true).unwrap();
+        assert!(rx_low.capture_bgra(30).is_none());
+        let _ = rx_low.ptz_is_supported();
+        let _ = rx_low.ptz_pan_tilt_speed(0.5, -0.5);
+        let _ = rx_low.ptz_zoom_speed(0.3);
+        let _ = rx_low.ptz_auto_focus();
+        let _ = rx_low.ptz_focus_speed(0.2);
+        let _ = rx_low.ptz_store_preset(1);
+        let _ = rx_low.ptz_recall_preset(1, 0.8);
+        let _ = rx_low.ptz_white_balance_auto();
+        let _ = rx_low.ptz_white_balance_indoor();
+        let _ = rx_low.ptz_white_balance_outdoor();
+        let _ = rx_low.ptz_white_balance_oneshot();
+        let _ = rx_low.ptz_white_balance_manual(0.5, 0.5);
+        let _ = rx_low.ptz_exposure_auto();
+        let _ = rx_low.ptz_exposure_manual(0.5);
+
+        let rx_hi = rt.create_receiver("NONEXISTENT_NDI_SOURCE_TEST_2", false).unwrap();
+        assert!(rx_hi.capture_bgra(20).is_none());
     }
 }

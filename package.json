@@ -7,6 +7,8 @@
   "scripts": {
     "dev:ui": "pnpm --filter @videocontroller/desktop dev",
     "build:ui": "pnpm --filter @videocontroller/desktop build",
+    "test:ui": "pnpm --filter @videocontroller/desktop test",
+    "test:ui:coverage": "pnpm --filter @videocontroller/desktop test:coverage",
     "package:win": "pnpm --filter @videocontroller/desktop package:win",
     "package:mac": "pnpm --filter @videocontroller/desktop package:mac",
     "package:linux": "pnpm --filter @videocontroller/desktop package:linux",

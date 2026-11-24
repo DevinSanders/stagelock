@@ -124,3 +124,53 @@ impl CameraVisionPipeline {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vc_core::NormalizedRect;
+
+    #[test]
+    fn vision_pipeline_end_to_end_lock_point_and_clear() {
+        let mut pipe = CameraVisionPipeline::new_default();
+        assert_eq!(pipe.status().models.len(), 3);
+
+        let w = 128_u32;
+        let h = 96_u32;
+        let mut frame = vec![40_u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                frame[i] = ((x * 2) % 255) as u8;
+                frame[i + 1] = ((y * 3) % 255) as u8;
+                frame[i + 2] = 180;
+                frame[i + 3] = 255;
+            }
+        }
+
+        let det = RawDetection {
+            bbox: NormalizedRect { x: 0.25, y: 0.15, width: 0.30, height: 0.70 },
+            confidence: 0.94,
+            keypoints: Vec::new(),
+            embedding: None,
+        };
+
+        let out1 = pipe.process_frame(&frame, w, h, true, Some(vec![det.clone()]));
+        assert_eq!(out1.subjects.len(), 1);
+        assert_eq!(out1.tracking_state, TrackingState::Searching);
+
+        // Lock at point inside subject
+        let tid = pipe.lock_at_point(0.40, 0.45).expect("should lock subject at click");
+        assert_eq!(pipe.lock_track(tid), Some(tid));
+
+        let out2 = pipe.process_frame(&frame, w, h, true, Some(vec![det]));
+        assert_eq!(out2.tracking_state, TrackingState::Locked);
+        assert_eq!(out2.locked_track_id, Some(tid));
+        assert!(out2.locked_face_sharpness >= 0.0);
+
+        // Clear lock & empty frame -> Idle when tracking disabled
+        pipe.clear_lock();
+        let out3 = pipe.process_frame(&frame, w, h, false, None);
+        assert_eq!(out3.tracking_state, TrackingState::Idle);
+    }
+}

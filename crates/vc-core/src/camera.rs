@@ -438,3 +438,50 @@ impl CameraConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn video_source_and_ptz_serde_defaults_roundtrip() {
+        let sources: Vec<VideoSourceConfig> = vec![
+            serde_json::from_str(r#"{"kind":"test_pattern"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"ndi","source_name":"CAM 1"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"rtsp","url":"rtsp://10.0.0.5/1"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"rtp","address":"239.0.0.1","port":5004}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"onvif","host":"10.0.0.6"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"web_rtc","whep_url":"http://10.0.0.7/whep"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"usb","device_id":"0","device_name":"CamLink"}"#).unwrap(),
+            serde_json::from_str(r#"{"kind":"deck_link","device_index":0}"#).unwrap(),
+        ];
+        assert_eq!(sources.len(), 8);
+        assert!(matches!(sources[2], VideoSourceConfig::Rtsp { latency_ms: 25, prefer_tcp: true, .. }));
+        assert!(matches!(sources[4], VideoSourceConfig::Onvif { port: 80, .. }));
+
+        let ptzs: Vec<PtzConfig> = vec![
+            PtzConfig::default(),
+            serde_json::from_str(r#"{"protocol":"ndi"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"visca_ip_sony","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"visca_ip_raw_tcp","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"visca_ip_raw_udp","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"onvif","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"canon_xc","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"panasonic_aw","host":"10.0.0.1"}"#).unwrap(),
+            serde_json::from_str(r#"{"protocol":"mock"}"#).unwrap(),
+        ];
+        assert_eq!(ptzs.len(), 9);
+        assert!(matches!(ptzs[2], PtzConfig::ViscaIpSony { port: 52381, .. }));
+        assert!(matches!(ptzs[3], PtzConfig::ViscaIpRawTcp { port: 5678, .. }));
+        assert!(matches!(ptzs[4], PtzConfig::ViscaIpRawUdp { port: 1259, .. }));
+
+        let ndi_def = NdiOutputConfig::default();
+        assert!(!ndi_def.enabled);
+        let cal: CameraCalibration = serde_json::from_str("{}").unwrap();
+        assert_eq!(cal, CameraCalibration::default());
+        let color: ColorAdjustments = serde_json::from_str("{}").unwrap();
+        assert_eq!(color, ColorAdjustments::default());
+        let framing: FramingConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(framing, FramingConfig::default());
+    }
+}

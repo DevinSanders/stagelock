@@ -157,4 +157,38 @@ mod tests {
         );
         assert!(qsv.contains("qsvh264enc"));
     }
+
+    #[test]
+    fn builds_pipelines_for_all_sources_and_all_hardware_backends() {
+        let sources = vec![
+            VideoSourceConfig::Ndi { source_name: "CAM1".into(), low_bandwidth: false },
+            VideoSourceConfig::Rtsp { url: "rtsp://10.0.0.1/1".into(), latency_ms: 25, prefer_tcp: false },
+            VideoSourceConfig::Rtp { address: "239.0.0.1".into(), port: 5004, codec: "H264".into() },
+            VideoSourceConfig::Onvif {
+                host: "10.0.0.2".into(),
+                port: 80,
+                username: String::new(),
+                password: String::new(),
+                resolved_rtsp_url: None,
+            },
+            VideoSourceConfig::WebRtc { whep_url: "https://host/whep".into(), bearer_token: None },
+            VideoSourceConfig::Usb { device_id: "0".into(), device_name: "Cam".into(), width: 1280, height: 720, fps: 30 },
+            VideoSourceConfig::DeckLink { device_index: 0, connection: "sdi".into(), mode: "auto".into() },
+        ];
+        let backends = [
+            HardwareAccelBackend::NvidiaNvcodec,
+            HardwareAccelBackend::IntelQuickSync,
+            HardwareAccelBackend::WindowsD3d11,
+            HardwareAccelBackend::AppleVideoToolbox,
+            HardwareAccelBackend::LinuxVaapi,
+            HardwareAccelBackend::AmdAmf,
+            HardwareAccelBackend::SoftwareCpu,
+        ];
+        for (i, src) in sources.iter().enumerate() {
+            let b = &backends[i % backends.len()];
+            let spec = build_ingest_pipeline_spec(src, b, b, None);
+            assert!(spec.contains("preview_sink"));
+            assert!(spec.contains("cv_sink"));
+        }
+    }
 }

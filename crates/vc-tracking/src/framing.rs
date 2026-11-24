@@ -298,4 +298,66 @@ mod tests {
             err.target_x
         );
     }
+
+    #[test]
+    fn covers_all_presets_third_modes_coco17_and_bbox_fallbacks() {
+        let mut solver = FramingSolver::default();
+        let mut cfg = FramingConfig::default();
+
+        // Walk left in AutoLeadRoom -> places subject on right third (~0.64)
+        cfg.rule_of_thirds = RuleOfThirds::AutoLeadRoom;
+        let s = subject_at(0.50, 0.28, 0.55);
+        let mut err = solver.compute(&s, &cfg, -0.25, 0.05);
+        for _ in 0..80 {
+            err = solver.compute(&s, &cfg, -0.25, 0.05);
+        }
+        assert!(err.target_x > 0.60);
+
+        // Idle decay branch + reset + Center & RightThird
+        let _ = solver.compute(&s, &cfg, 0.0, 0.05);
+        solver.reset();
+        cfg.rule_of_thirds = RuleOfThirds::Center;
+        let _ = solver.compute(&s, &cfg, 0.0, 0.5);
+        cfg.rule_of_thirds = RuleOfThirds::RightThird;
+        let _ = solver.compute(&s, &cfg, 0.0, 0.5);
+        let anchor = solver.current_anchor(FramingPreset::FullHeight);
+        assert!((anchor[1] - 0.17).abs() < 1e-4);
+
+        // FullHeight & WaistUp with 17-keypoint COCO layout
+        let mut coco17 = s.clone();
+        coco17.keypoints = vec![Keypoint2D { x: 0.5, y: 0.3, score: 0.9 }; 17];
+        coco17.keypoints[5] = Keypoint2D { x: 0.44, y: 0.38, score: 0.9 };
+        coco17.keypoints[6] = Keypoint2D { x: 0.56, y: 0.38, score: 0.9 };
+        coco17.keypoints[11] = Keypoint2D { x: 0.46, y: 0.58, score: 0.9 };
+        coco17.keypoints[12] = Keypoint2D { x: 0.54, y: 0.58, score: 0.9 };
+        coco17.keypoints[15] = Keypoint2D { x: 0.47, y: 0.85, score: 0.9 };
+        coco17.keypoints[16] = Keypoint2D { x: 0.53, y: 0.85, score: 0.9 };
+
+        for preset in [FramingPreset::CloseUp, FramingPreset::WaistUp, FramingPreset::FullHeight] {
+            cfg.preset = preset;
+            let e = solver.compute(&coco17, &cfg, 0.0, 0.033);
+            assert!(e.subject_scale > 0.05);
+        }
+
+        // Nose-only keypoint + CloseUp with shoulders only (no hips)
+        let mut nose_only = s.clone();
+        nose_only.keypoints = vec![
+            Keypoint2D { x: 0.5, y: 0.25, score: 0.9 },
+            Keypoint2D { x: 0.0, y: 0.0, score: 0.1 },
+            Keypoint2D { x: 0.0, y: 0.0, score: 0.1 },
+            Keypoint2D { x: 0.42, y: 0.35, score: 0.9 },
+            Keypoint2D { x: 0.58, y: 0.35, score: 0.9 },
+        ];
+        cfg.preset = FramingPreset::CloseUp;
+        let _ = solver.compute(&nose_only, &cfg, 0.0, 0.033);
+
+        // No keypoints at all -> bbox fallback across all 3 presets
+        let mut no_kps = s.clone();
+        no_kps.keypoints.clear();
+        for preset in [FramingPreset::CloseUp, FramingPreset::WaistUp, FramingPreset::FullHeight] {
+            cfg.preset = preset;
+            let e = solver.compute(&no_kps, &cfg, 0.0, 0.033);
+            assert!(e.subject_scale > 0.05);
+        }
+    }
 }

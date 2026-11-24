@@ -25,6 +25,10 @@ pnpm dev:ui
 # Typecheck & build production UI + LAN PWA bundle (outputs to dist/)
 pnpm build:ui
 
+# Run user-perspective UI tests (Vitest + React Testing Library) & >=90% V8 coverage gate
+pnpm test:ui
+pnpm test:ui:coverage
+
 # Package native Tauri 2 platform installers (outputs to target/release/bundle/)
 pnpm package:win    # Windows NSIS .exe + .msi
 pnpm package:mac    # macOS .dmg

@@ -91,3 +91,58 @@ impl PtzManager {
         self.drivers.read().await.get(&id).cloned()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn manager_configures_every_ptz_protocol_and_removes_cleanly() {
+        let mgr = PtzManager::new(MediaEngine::new());
+        let variants: Vec<(PtzConfig, Option<&str>)> = vec![
+            (PtzConfig::Mock, Some("mock")),
+            (PtzConfig::Ndi, Some("ndi_ptz")),
+            (PtzConfig::ViscaIpSony { host: "127.0.0.1".into(), port: 52381 }, Some("visca_ip_sony")),
+            (PtzConfig::ViscaIpRawTcp { host: "127.0.0.1".into(), port: 5678 }, Some("visca_ip_raw_tcp")),
+            (PtzConfig::ViscaIpRawUdp { host: "127.0.0.1".into(), port: 1259 }, Some("visca_ip_raw_udp")),
+            (
+                PtzConfig::Onvif {
+                    host: "127.0.0.1".into(),
+                    port: 80,
+                    username: "admin".into(),
+                    password: "pass".into(),
+                    profile_token: Some("P1".into()),
+                },
+                Some("onvif"),
+            ),
+            (
+                PtzConfig::CanonXc {
+                    host: "127.0.0.1".into(),
+                    port: 80,
+                    username: String::new(),
+                    password: String::new(),
+                },
+                Some("canon_xc"),
+            ),
+            (
+                PtzConfig::PanasonicAw { host: "127.0.0.1".into(), port: 80 },
+                Some("panasonic_aw"),
+            ),
+            (PtzConfig::None, None),
+        ];
+
+        let mut cam = CameraConfig::new_demo("Cam", "smpte");
+        for (ptz, expected) in variants {
+            cam.ptz = ptz;
+            mgr.configure_camera(&cam).await;
+            let got = mgr.get(cam.id).await.map(|d| d.protocol_name());
+            assert_eq!(got, expected);
+        }
+
+        cam.ptz = PtzConfig::Mock;
+        mgr.configure_camera(&cam).await;
+        assert!(mgr.get(cam.id).await.is_some());
+        mgr.remove_camera(cam.id).await;
+        assert!(mgr.get(cam.id).await.is_none());
+    }
+}

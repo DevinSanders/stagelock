@@ -53,6 +53,7 @@ export const App: React.FC = () => {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
   const [calReport, setCalReport] = useState<CalibrationReport | null>(null);
+  const [calError, setCalError] = useState<string | null>(null);
 
   // When returning from compact to desktop, switch off the mobile-only "multiview" inspector tab
   useEffect(() => {
@@ -502,9 +503,12 @@ export const App: React.FC = () => {
                       disabled={calibrating}
                       onClick={async () => {
                         setCalibrating(true);
+                        setCalError(null);
                         try {
                           const rep = await api.ptzCalibrate(selectedCamera.id);
                           setCalReport(rep);
+                        } catch (err) {
+                          setCalError(err instanceof Error ? err.message : String(err));
                         } finally {
                           setCalibrating(false);
                         }
@@ -512,6 +516,12 @@ export const App: React.FC = () => {
                     >
                       {calibrating ? "Calibrating Pan Pulse..." : "Run PTZ Speed & Latency Calibration"}
                     </button>
+
+                    {calError && (
+                      <div role="alert" style={{ fontSize: 11, color: "#fca5a5", lineHeight: 1.4 }}>
+                        Calibration failed: {calError}
+                      </div>
+                    )}
 
                     {calReport && calReport.camera_id === selectedCamera.id && (
                       <div style={{ fontSize: 11, color: "#86efac", lineHeight: 1.4 }}>

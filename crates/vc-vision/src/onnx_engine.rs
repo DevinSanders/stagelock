@@ -390,3 +390,65 @@ fn crop_resize_normalize_chw(
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_and_load_handle_missing_and_present_models_dir() {
+        let dir = std::env::temp_dir().join(format!(
+            "vc_vision_onnx_test_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Missing models => not ready
+        let status = probe_vision_status(&dir);
+        assert_eq!(status.models.len(), 3);
+        assert!(!status.detector_ready);
+        assert!(!status.pose_ready);
+        assert!(!status.reid_ready);
+        assert!(!status.default_models_dir_is_empty_check_helper(&status));
+
+        // Load from empty directory succeeds gracefully (fallback mode)
+        let mut engine = OnnxVisionEngine::load_from_dir(&dir);
+        assert!(!engine.has_neural_detector());
+        let frame = vec![128u8; 64 * 64 * 4];
+        let dets = engine.detect_persons(&frame, 64, 64);
+        assert!(dets.is_empty());
+        let bbox = NormalizedRect {
+            x: 0.2,
+            y: 0.2,
+            width: 0.4,
+            height: 0.5,
+        };
+        assert!(engine.estimate_pose(&frame, 64, 64, &bbox).is_empty());
+        assert!(engine.extract_reid_embedding(&frame, 64, 64, &bbox).is_none());
+
+        // Create dummy non-empty files for all 3 models (tests file detection & invalid ONNX error path)
+        for model in &status.models {
+            std::fs::write(dir.join(&model.filename), b"not-a-valid-onnx-model").unwrap();
+        }
+        let status_present = probe_vision_status(&dir);
+        assert!(status_present
+            .models
+            .iter()
+            .all(|m| m.installed && m.size_bytes.unwrap_or(0) > 0));
+        let engine_invalid = OnnxVisionEngine::load_from_dir(&dir);
+        assert!(!engine_invalid.has_neural_detector());
+
+        let def_dir = default_models_dir();
+        assert!(!def_dir.as_os_str().is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    trait VisionStatusExt {
+        fn default_models_dir_is_empty_check_helper(&self, s: &VisionEngineStatus) -> bool {
+            s.models_dir.is_empty()
+        }
+    }
+    impl VisionStatusExt for VisionEngineStatus {}
+}
