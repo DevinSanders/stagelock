@@ -1,6 +1,6 @@
 # VideoController
 
-Cross-platform, GPU-accelerated multi-camera preview, **NDI® re-broadcast**, **AI subject auto-tracking & broadcast framing**, **vMix live tally/switching**, **Stream Deck + Bitfocus Companion/Buttons**, and **Mobile/Tablet Remote PWA** studio controller built with **Rust + GStreamer + ONNX Runtime (`ort`)** and **Electron (React + TypeScript)**.
+Cross-platform, GPU-accelerated multi-camera preview (**zero-latency GPU H.264 WebCodecs + MJPEG fallback**), **NDI® re-broadcast**, **event-driven AI subject auto-tracking & broadcast framing**, **vMix live tally/switching**, **Stream Deck + Bitfocus Companion/Buttons**, and **Mobile/Tablet Remote PWA** studio controller built with **Rust + GStreamer + ONNX Runtime (`ort`)** and **Tauri 2 (React + TypeScript)**.
 
 Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)).
 
@@ -40,13 +40,13 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
 | :--- | :--- |
 | [`crates/`](crates/README.md) | Rust workspace containing all 7 headless core, media, AI, PTZ, integration, and daemon crates |
 | [`crates/vc-core`](crates/vc-core/README.md) | Shared domain models, UUID camera configs, telemetry schemas, embedded SQLite (`videocontroller.db`) store with versioned migrations & legacy `config.json` auto-import |
-| [`crates/vc-media`](crates/vc-media/README.md) | Multi-GPU prober, GStreamer live ingest (`gst-native` or runtime bridge), NDI® 6 dynamic loader, color & Unsharp-Mask pipeline |
+| [`crates/vc-media`](crates/vc-media/README.md) | Multi-GPU prober, GStreamer live ingest (`gst-native` or runtime bridge), lazy GPU zero-latency H.264 WebCodecs encoder, NDI® 6 dynamic loader, decoupled preview & color/Unsharp-Mask pipeline |
 | [`crates/vc-vision`](crates/vc-vision/README.md) | ONNX Runtime (`ort` v2) wrapper (`RTMDet`, `RTMPose`, `OSNet`), spatial HSV fallback, CMC, BoT-SORT, identity gallery, face-ROI sharpness |
 | [`crates/vc-tracking`](crates/vc-tracking/README.md) | One-Euro filter, anatomical broadcast framing solver, 5-stage smooth PTZ controller, 2-tier motion-gated auto-focus |
 | [`crates/vc-ptz`](crates/vc-ptz/README.md) | Unified PTZ/Imaging trait + VISCA-IP, ONVIF S/T + WS-Discovery, NDI PTZ, Canon XC, Panasonic AW, Mock PTZ |
 | [`crates/vc-integrations`](crates/vc-integrations/README.md) | vMix TCP Tally + HTTP switching client, Bitfocus Buttons Control API client, Stream Deck key/dial router |
-| [`crates/vc-daemon`](crates/vc-daemon/README.md) | Headless Rust control & media server (REST + 30 Hz WebSocket + MJPEG + PWA static server + 30 Hz tracking supervisor + OSC `:9000`) |
-| [`apps/desktop`](apps/desktop/README.md) | Electron + React + TypeScript multiview studio & responsive Mobile/Tablet Remote PWA ([`apps/`](apps/README.md)) |
+| [`crates/vc-daemon`](crates/vc-daemon/README.md) | Embeddable Rust control & media server (REST + 30 Hz WS telemetry + binary H.264 WebCodecs WS + MJPEG + PWA static server + event-driven tracking supervisor + OSC `:9000`) |
+| [`apps/desktop`](apps/desktop/README.md) | **Tauri 2** + React + TypeScript multiview studio (embeds `vc-daemon` in-process) & responsive Mobile/Tablet Remote PWA ([`apps/`](apps/README.md)) |
 | [`integrations/companion-module`](integrations/companion-module/README.md) | First-party Bitfocus Companion / Buttons module (`@companion-module/base`) ([`integrations/`](integrations/README.md)) |
 | [`models/`](models/README.md) | Optional permissive Apache-2.0/MIT ONNX weights (`RTMDet-s`, `RTMPose-s`, `OSNet`) & [`MODELS_LICENSE.md`](models/MODELS_LICENSE.md) |
 | [`scripts/`](scripts/README.md) | Windows setup, model download, dev launcher, installer packaging, and 4-camera soak test scripts |
@@ -69,15 +69,15 @@ Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACH
    ```pwsh
    .\scripts\dev.ps1
    ```
-4. **Build Installers (Windows `.exe`, macOS `.dmg`, Linux `.AppImage` + `.deb`):**
+4. **Build Installers (Windows `.exe`/`.msi`, macOS `.dmg`, Linux `.AppImage` + `.deb`):**
    ```pwsh
-   # Windows (builds vc-daemon release, UI/PWA, Companion module, NSIS Setup .exe + Portable .exe):
+   # Windows (builds headless vc-daemon, UI/PWA, Companion module, and Tauri 2 NSIS .exe + MSI):
    .\scripts\package-windows.ps1
 
-   # Cross-platform via electron-builder (after `cargo build --release -p vc-daemon` and `pnpm build:ui`):
-   pnpm package:win    # Windows NSIS Setup .exe + Portable .exe (apps/desktop/release/)
-   pnpm package:mac    # macOS .dmg (apps/desktop/release/)
-   pnpm package:linux  # Linux .AppImage + .deb (apps/desktop/release/)
+   # Cross-platform via Tauri 2 CLI:
+   pnpm package:win    # Windows NSIS .exe + .msi (target/release/bundle/)
+   pnpm package:mac    # macOS .dmg (target/release/bundle/dmg/)
+   pnpm package:linux  # Linux .AppImage + .deb (target/release/bundle/)
    ```
 5. **Run Automated 4-Camera Live Soak & Reliability Test:**
    ```pwsh

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VideoController",
+  "version": "0.1.0",
+  "identifier": "io.videocontroller.studio",
+  "build": {
+    "beforeDevCommand": "pnpm dev:web",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VideoController — Multi-Camera AI PTZ Studio",
+        "width": 1520,
+        "height": 940,
+        "minWidth": 1120,
+        "minHeight": 720,
+        "backgroundColor": "#0b0e14",
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "copyright": "Copyright © 2026 VideoController Contributors (MIT OR Apache-2.0)",
+    "category": "Video",
+    "shortDescription": "Multi-camera preview, NDI re-broadcast, and AI auto-tracking PTZ studio controller",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": {
+      "../dist/**/*": "web/",
+      "../../../docs/ndi-attribution.md": "docs/ndi-attribution.md",
+      "../../../LICENSE-MIT": "docs/LICENSE-MIT",
+      "../../../LICENSE-APACHE": "docs/LICENSE-APACHE",
+      "../../../integrations/companion-module/dist/**/*": "companion-module/dist/",
+      "../../../integrations/companion-module/companion/**/*": "companion-module/companion/",
+      "../../../integrations/companion-module/package.json": "companion-module/package.json"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
+    "linux": {
+      "deb": {
+        "section": "video"
+      }
+    }
+  }
+}

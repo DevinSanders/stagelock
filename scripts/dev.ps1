@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Builds the Remote PWA bundle + vc-daemon and launches the VideoController desktop studio.
+    Builds the Remote PWA assets and launches the VideoController Tauri 2 desktop studio
+    (with vc-daemon embedded in-process and LAN Remote PWA served on :8765).
 #>
 $ErrorActionPreference = "Continue"
 
@@ -22,24 +23,13 @@ try {
         }
     }
 
-    # Guard against Node 26 + extract-zip bug leaving electron.exe unextracted
-    $electronDir = Join-Path $repoRoot "apps\desktop\node_modules\electron"
-    $electronExe = Join-Path $electronDir "dist\electron.exe"
-    if ((Test-Path $electronDir) -and (-not (Test-Path $electronExe))) {
-        Write-Host "Electron binary missing; attempting repair from local Electron cache..." -ForegroundColor Yellow
-        $cacheRoot = Join-Path $env:LOCALAPPDATA "electron\Cache"
-        $cacheZip = Get-ChildItem -Path $cacheRoot -Recurse -Filter "electron-*-win32-x64.zip" -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-        if ($cacheZip) {
-            $distDir = Join-Path $electronDir "dist"
-            if (Test-Path $distDir) {
-                Remove-Item -Recurse -Force $distDir -ErrorAction SilentlyContinue
-            }
-            Expand-Archive -Path $cacheZip.FullName -DestinationPath $distDir -Force
-            Set-Content -Path (Join-Path $electronDir "path.txt") -Value "electron.exe" -NoNewline
-            Write-Host "Repaired Electron binary at $electronExe" -ForegroundColor Green
-        }
+    # Enable zero-pipe in-process gstreamer-rs automatically when GStreamer MSVC dev headers are installed
+    $gstPkgConfig = "C:\Program Files\gstreamer\1.0\msvc_x86_64\lib\pkgconfig"
+    $tauriExtraArgs = @()
+    if (Test-Path (Join-Path $gstPkgConfig "gstreamer-1.0.pc")) {
+        $env:PKG_CONFIG_PATH = $gstPkgConfig
+        $tauriExtraArgs = @("--features", "gst-native")
+        Write-Host "GStreamer MSVC SDK detected: enabling in-process gst-native low-latency pipeline." -ForegroundColor Cyan
     }
 
     Write-Host "Building Remote Web / PWA assets (served on LAN :8765)..." -ForegroundColor Cyan
@@ -49,15 +39,8 @@ try {
         exit $LASTEXITCODE
     }
 
-    Write-Host "Building vc-daemon..." -ForegroundColor Cyan
-    & cargo build -p vc-daemon
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "cargo build failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
-
-    Write-Host "Launching Electron Studio UI (and LAN Remote PWA on http://<LAN-IP>:8765)..." -ForegroundColor Green
-    & pnpm dev:ui
+    Write-Host "Launching VideoController Tauri 2 Studio (embedded vc-daemon + LAN PWA on http://<LAN-IP>:8765)..." -ForegroundColor Green
+    & pnpm --filter @videocontroller/desktop tauri dev @tauriExtraArgs
     exit $LASTEXITCODE
 }
 finally {

@@ -16,17 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run Rust workspace unit & integration tests
-        run: cargo test --all-targets
-
-      - name: Build optimized vc-daemon release binary
-        run: cargo build --release -p vc-daemon
+      - name: Install Linux WebKitGTK / Tauri 2 system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -47,3 +41,18 @@ jobs:
 
       - name: Build Bitfocus Companion / Buttons module
         run: pnpm --filter companion-module-videocontroller build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Rust workspace unit & integration tests
+        run: cargo test --all-targets
+
+      - name: Check Tauri 2 desktop binary
+        run: cargo check -p videocontroller-desktop
+
+      - name: Build optimized standalone vc-daemon release binary
+        run: cargo build --release -p vc-daemon

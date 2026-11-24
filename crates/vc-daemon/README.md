@@ -4,11 +4,12 @@ Headless Rust control plane, media server, 30 Hz multi-camera tracking superviso
 
 ## Responsibilities
 
+- **Embeddable Library + Standalone Binary (`src/lib.rs` + `src/main.rs`):** Runs embedded in-process inside the Tauri 2 desktop app (`vc_daemon::run_daemon`) or standalone as a headless server binary.
 - **REST API (`/api/v1/...`):** Camera CRUD, framing/color/NDI/vMix settings, PTZ move/stop/focus/preset/calibration, ONVIF/NDI/USB discovery, vMix & Bitfocus Buttons triggers, LAN remote access metadata (`/api/v1/remote-info`), and graceful teardown (`/api/v1/shutdown`).
 - **Real-Time Telemetry WebSocket (`/ws/telemetry`):** Pushes system capabilities on connect followed by ~30 Hz per-camera bounding boxes, keypoints, tracking lock state, focus sharpness, and live vMix tally.
-- **Live Preview Streaming:** Single-frame JPEG (`/api/v1/cameras/{id}/snapshot.jpg`) and rate-limited MJPEG (`/api/v1/cameras/{id}/stream.mjpeg?max_fps=12`).
+- **Live Preview Streaming:** Ultra-low-latency binary GPU H.264 WebCodecs stream (`/ws/video/{id}`), single-frame JPEG (`/api/v1/cameras/{id}/snapshot.jpg`), and rate-limited MJPEG fallback (`/api/v1/cameras/{id}/stream.mjpeg?max_fps=12`).
 - **LAN Mobile/Tablet Remote PWA Server:** Automatically serves the built UI from `apps/desktop/dist` (or `VC_WEB_DIST_DIR`) over LAN (`http://<studio-pc-ip>:8765`).
-- **30 Hz Tracking Supervisor ([`src/tracking_loop.rs`](./src/tracking_loop.rs)):** Runs an isolated closed-loop tracking & auto-focus task per PTZ camera and persists PTZ speed/latency calibration sweeps into SQLite.
+- **Event-Driven Tracking Supervisor ([`src/tracking_loop.rs`](./src/tracking_loop.rs)):** Wakes immediately (`<0.2 ms`) on every fresh vision detection per PTZ camera and persists PTZ speed/latency calibration sweeps into SQLite.
 - **OSC UDP Listener (`:9000`):**
   - `/cam/{idx}/track/toggle`
   - `/cam/{idx}/framing/preset` (`close_up` | `waist_up` | `full_height`)

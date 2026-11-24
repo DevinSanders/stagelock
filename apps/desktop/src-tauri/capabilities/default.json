@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default least-privilege capability for the VideoController studio window",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,25 @@
+[package]
+name = "videocontroller-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "VideoController — Multi-Camera AI Auto-Tracking PTZ Studio (Tauri 2)"
+
+[features]
+default = []
+gst-native = ["vc-daemon/gst-native"]
+onnx = ["vc-daemon/onnx"]
+onnx-cuda = ["vc-daemon/onnx-cuda"]
+onnx-directml = ["vc-daemon/onnx-directml"]
+onnx-coreml = ["vc-daemon/onnx-coreml"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow.workspace = true
+tauri = { version = "2", features = [] }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+vc-daemon = { path = "../../../crates/vc-daemon" }
