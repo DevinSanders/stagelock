@@ -192,8 +192,8 @@ export const App: React.FC = () => {
       <header className="topbar">
         <div className="brand">
           <span className={`brand-dot ${connected ? "online" : "offline"}`} />
-          <span>VideoController</span>
-          <span className="brand-sub">{IS_ELECTRON ? "AI Multi-Cam Studio" : "Remote PWA"}</span>
+          <span>StageLock</span>
+          <span className="brand-sub">{IS_ELECTRON ? "AI PTZ Tracking & Broadcast Studio" : "Remote PWA"}</span>
         </div>
 
         <div className="status-pills">
@@ -240,7 +240,7 @@ export const App: React.FC = () => {
             />
           ) : (
             <div className="monitor-card" style={{ color: "#64748b", padding: 24, textAlign: "center" }}>
-              {connected ? "Tap + Cam to add a video source." : "Connecting to VideoController engine..."}
+              {connected ? "Tap + Cam to add a video source." : "Connecting to StageLock engine..."}
             </div>
           )}
 

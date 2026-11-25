@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Downloads permissive Apache-2.0 / MIT ONNX vision models into ./models for VideoController.
+    Downloads permissive Apache-2.0 / MIT ONNX vision models into ./models for StageLock.
 #>
 $ErrorActionPreference = "Stop"
 
@@ -21,7 +21,7 @@ $downloads = @(
     }
 )
 
-Write-Host "=== VideoController Permissive ONNX Model Downloader ===" -ForegroundColor Cyan
+Write-Host "=== StageLock Permissive ONNX Model Downloader ===" -ForegroundColor Cyan
 foreach ($m in $downloads) {
     $dest = Join-Path $modelsDir $m.File
     if (Test-Path $dest) {
@@ -36,4 +36,4 @@ foreach ($m in $downloads) {
 
 Write-Host ""
 Write-Host "Note: Spatial 3-zone HSV Re-ID runs built-in with zero weights. Optionally drop osnet_x0_25.onnx (MIT) into models/ for neural 512-dim Re-ID." -ForegroundColor Gray
-Write-Host "Build daemon with ONNX Runtime enabled: cargo build -p vc-daemon --features vc-vision/onnx" -ForegroundColor Gray
+Write-Host "Build daemon with ONNX Runtime enabled: cargo build -p stagelock-daemon --features stagelock-vision/onnx" -ForegroundColor Gray

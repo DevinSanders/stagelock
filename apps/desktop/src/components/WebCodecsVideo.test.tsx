@@ -18,11 +18,11 @@ class MockEncodedVideoChunk {
   constructor(public init: { type: string; timestamp: number; data: Uint8Array }) {}
 }
 
-function makeVch2Packet(isKey: boolean, width = 1280, height = 720, tsUs = 33333): ArrayBuffer {
+function makeSlh2Packet(isKey: boolean, width = 1280, height = 720, tsUs = 33333): ArrayBuffer {
   const buf = new ArrayBuffer(26);
   const view = new DataView(buf);
-  view.setUint8(0, 0x56); // V
-  view.setUint8(1, 0x43); // C
+  view.setUint8(0, 0x53); // S
+  view.setUint8(1, 0x4c); // L
   view.setUint8(2, 0x48); // H
   view.setUint8(3, 0x32); // 2
   view.setUint8(4, isKey ? 1 : 0);
@@ -95,13 +95,13 @@ describe("WebCodecsVideo (GPU H.264 happy path & automatic MJPEG failure fallbac
       });
       // Ignore bad magic & delta before first keyframe
       ws.onmessage?.({ data: new ArrayBuffer(24) });
-      ws.onmessage?.({ data: makeVch2Packet(false) });
+      ws.onmessage?.({ data: makeSlh2Packet(false) });
       // Feed real IDR keyframe + delta frame
-      ws.onmessage?.({ data: makeVch2Packet(true, 1280, 720, 1000) });
-      ws.onmessage?.({ data: makeVch2Packet(false, 1280, 720, 34333) });
+      ws.onmessage?.({ data: makeSlh2Packet(true, 1280, 720, 1000) });
+      ws.onmessage?.({ data: makeSlh2Packet(false, 1280, 720, 34333) });
       // Backpressure drops stale delta frame when decodeQueueSize > 3
       queueSize = 5;
-      ws.onmessage?.({ data: makeVch2Packet(false, 1280, 720, 67666) });
+      ws.onmessage?.({ data: makeSlh2Packet(false, 1280, 720, 67666) });
     });
 
     expect(configureSpy).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe("WebCodecsVideo (GPU H.264 happy path & automatic MJPEG failure fallbac
     // 4. Decode exception triggers fallback
     render(<WebCodecsVideo cameraId="c4" cameraName="C4" />);
     act(() => {
-      MockWebSocket.instances[3].onmessage?.({ data: makeVch2Packet(true) });
+      MockWebSocket.instances[3].onmessage?.({ data: makeSlh2Packet(true) });
     });
     expect(screen.getByAltText("C4")).toBeInTheDocument();
 

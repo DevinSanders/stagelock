@@ -6,10 +6,10 @@ PowerShell developer, setup, packaging, and verification scripts for Windows.
 | :--- | :--- | :--- |
 | [`setup-windows.ps1`](./setup-windows.ps1) | Installs Windows build prerequisites (Rust, Node.js, pnpm, GStreamer 1.28 MSVC unified runtime + dev headers, Visual Studio Build Tools). Run from an elevated PowerShell prompt. | `.\scripts\setup-windows.ps1` |
 | [`download-models.ps1`](./download-models.ps1) | Downloads permissive Apache-2.0 ONNX vision weights (`RTMDet-s`, `RTMPose-s`) into [`../models/`](../models/README.md). | `.\scripts\download-models.ps1` |
-| [`dev.ps1`](./dev.ps1) | Builds Remote PWA assets and launches the **Tauri 2** Desktop Studio (with `vc-daemon` embedded in-process, LAN PWA on `:8765`, and automatic `--features gst-native` when GStreamer SDK is present). | `.\scripts\dev.ps1` |
-| [`package-windows.ps1`](./package-windows.ps1) | Builds standalone headless `vc-daemon.exe`, UI/PWA, Companion module, portable staging folder (`dist-release/windows-x64/`), and compact native **Tauri 2** Windows NSIS `.exe` & `.msi` installers (`target/release/bundle/`). Pass `-SkipInstaller` to build only the headless staging bundle. | `.\scripts\package-windows.ps1` |
+| [`dev.ps1`](./dev.ps1) | Builds Remote PWA assets and launches the **Tauri 2** Desktop Studio (with `stagelock-daemon` embedded in-process, LAN PWA on `:8765`, and automatic `--features gst-native` when GStreamer SDK is present). | `.\scripts\dev.ps1` |
+| [`package-windows.ps1`](./package-windows.ps1) | Builds standalone headless `stagelock-daemon.exe`, UI/PWA, Companion module, portable staging folder (`dist-release/windows-x64/`), and compact native **Tauri 2** Windows NSIS `.exe` & `.msi` installers (`target/release/bundle/`). Pass `-SkipInstaller` to build only the headless staging bundle. | `.\scripts\package-windows.ps1` |
 | [`coverage.ps1`](./coverage.ps1) | Runs all Rust workspace tests with LLVM source-based instrumentation (`llvm-cov`) and all Vitest + React Testing Library UI tests with V8 coverage, enforcing `>= 90%` line coverage on both stacks. | `.\scripts\coverage.ps1 -MinCoverage 90` |
-| [`soak-test.ps1`](./soak-test.ps1) | Launches an isolated 4-camera live reliability test against the release `vc-daemon.exe` verifying SQLite `.db` persistence, 30 fps JPEG delivery, RAM stability, and zero thread leaks. | `.\scripts\soak-test.ps1 -DurationSeconds 30` |
+| [`soak-test.ps1`](./soak-test.ps1) | Launches an isolated 4-camera live reliability test against the release `stagelock-daemon.exe` verifying SQLite `.db` persistence, 30 fps JPEG delivery, RAM stability, and zero thread leaks. | `.\scripts\soak-test.ps1 -DurationSeconds 30` |
 
 ## Running Scripts
 

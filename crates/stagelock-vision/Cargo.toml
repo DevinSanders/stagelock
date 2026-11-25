@@ -1,0 +1,22 @@
+[package]
+name = "stagelock-vision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Enable ONNX Runtime execution via `ort` v2 (CUDA / TensorRT / DirectML / CoreML / CPU)
+onnx = ["dep:ort"]
+onnx-cuda = ["onnx", "ort/cuda"]
+onnx-directml = ["onnx", "ort/directml"]
+onnx-coreml = ["onnx", "ort/coreml"]
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+stagelock-core = { path = "../stagelock-core" }
+
+ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "download-binaries"] }

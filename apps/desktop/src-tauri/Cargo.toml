@@ -1,17 +1,17 @@
 [package]
-name = "videocontroller-desktop"
+name = "stagelock-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "VideoController — Multi-Camera AI Auto-Tracking PTZ Studio (Tauri 2)"
+description = "StageLock — AI PTZ Tracking & Broadcast Studio (Tauri 2)"
 
 [features]
 default = []
-gst-native = ["vc-daemon/gst-native"]
-onnx = ["vc-daemon/onnx"]
-onnx-cuda = ["vc-daemon/onnx-cuda"]
-onnx-directml = ["vc-daemon/onnx-directml"]
-onnx-coreml = ["vc-daemon/onnx-coreml"]
+gst-native = ["stagelock-daemon/gst-native"]
+onnx = ["stagelock-daemon/onnx"]
+onnx-cuda = ["stagelock-daemon/onnx-cuda"]
+onnx-directml = ["stagelock-daemon/onnx-directml"]
+onnx-coreml = ["stagelock-daemon/onnx-coreml"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -22,4 +22,4 @@ tauri = { version = "2", features = [] }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-vc-daemon = { path = "../../../crates/vc-daemon" }
+stagelock-daemon = { path = "../../../crates/stagelock-daemon" }

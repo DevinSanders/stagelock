@@ -1,7 +1,7 @@
 {
-  "name": "VideoController Remote",
-  "short_name": "VideoCtrl",
-  "description": "Multi-Camera AI PTZ Remote Control & Live Preview",
+  "name": "StageLock Remote",
+  "short_name": "StageLock",
+  "description": "StageLock — AI PTZ Tracking & Broadcast Studio Remote Control",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

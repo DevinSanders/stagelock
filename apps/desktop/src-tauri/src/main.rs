@@ -27,7 +27,7 @@ fn main() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "vc_daemon=info,vc_media=info,vc_ptz=info,videocontroller_desktop=info".into()),
+                .unwrap_or_else(|_| "stagelock_daemon=info,stagelock_media=info,stagelock_ptz=info,stagelock_desktop=info".into()),
         )
         .try_init();
 
@@ -36,12 +36,14 @@ fn main() {
 
     let app = tauri::Builder::default()
         .setup(move |app| {
-            if std::env::var("VC_EXTERNAL_DAEMON").as_deref() == Ok("1") {
-                info!("VC_EXTERNAL_DAEMON=1 set; skipping embedded vc-daemon startup");
+            if std::env::var("STAGELOCK_EXTERNAL_DAEMON").as_deref() == Ok("1")
+                || std::env::var("VC_EXTERNAL_DAEMON").as_deref() == Ok("1")
+            {
+                info!("STAGELOCK_EXTERNAL_DAEMON=1 set; skipping embedded stagelock-daemon startup");
                 return Ok(());
             }
 
-            let mut opts = vc_daemon::DaemonOptions::from_env();
+            let mut opts = stagelock_daemon::DaemonOptions::from_env();
             if opts.web_ui_dir.is_none() {
                 if let Ok(res_dir) = app.path().resource_dir() {
                     let web_dir = res_dir.join("web");
@@ -53,19 +55,19 @@ fn main() {
 
             let tx = daemon_shutdown_tx.clone();
             let thread = std::thread::Builder::new()
-                .name("vc-daemon-embedded".into())
+                .name("stagelock-daemon-embedded".into())
                 .spawn(move || {
                     match tokio::runtime::Builder::new_multi_thread()
                         .enable_all()
                         .build()
                     {
                         Ok(rt) => {
-                            if let Err(err) = rt.block_on(vc_daemon::run_daemon(opts, tx)) {
-                                error!("Embedded vc-daemon exited with error: {err:#}");
+                            if let Err(err) = rt.block_on(stagelock_daemon::run_daemon(opts, tx)) {
+                                error!("Embedded stagelock-daemon exited with error: {err:#}");
                             }
                         }
                         Err(err) => {
-                            error!("Failed creating Tokio runtime for embedded vc-daemon: {err}");
+                            error!("Failed creating Tokio runtime for embedded stagelock-daemon: {err}");
                         }
                     }
                 })?;
@@ -78,12 +80,12 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("failed building VideoController Tauri 2 application");
+        .expect("failed building StageLock Tauri 2 application");
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
             if let Some(daemon) = app_handle.try_state::<EmbeddedDaemon>() {
-                info!("Shutting down embedded vc-daemon...");
+                info!("Shutting down embedded stagelock-daemon...");
                 daemon.shutdown();
             }
         }

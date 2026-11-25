@@ -1,0 +1,27 @@
+[package]
+name = "stagelock-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Enable for in-process GStreamer C-API linking (uses gst-launch/gst-device-monitor bridge otherwise)
+gst-native = ["dep:gstreamer", "dep:gstreamer-app"]
+
+[dependencies]
+anyhow.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+jpeg-encoder = "0.6"
+libloading.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+stagelock-core = { path = "../stagelock-core" }
+stagelock-vision = { path = "../stagelock-vision" }
+
+gstreamer = { version = "0.23", optional = true }
+gstreamer-app = { version = "0.23", optional = true }

@@ -1,10 +1,10 @@
 {
-  "name": "@videocontroller/desktop",
+  "name": "@stagelock/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Multi-camera preview, NDI re-broadcast, and AI auto-tracking PTZ studio controller",
-  "author": "VideoController Contributors",
-  "homepage": "https://github.com/videocontroller/videocontroller",
+  "description": "StageLock — AI PTZ Tracking & Broadcast Studio",
+  "author": "StageLock Contributors",
+  "homepage": "https://github.com/stagelock/stagelock",
   "license": "Apache-2.0 OR MIT",
   "scripts": {
     "dev": "tauri dev",

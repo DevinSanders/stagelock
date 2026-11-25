@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/vc-core",
-    "crates/vc-media",
-    "crates/vc-ptz",
-    "crates/vc-vision",
-    "crates/vc-tracking",
-    "crates/vc-integrations",
-    "crates/vc-daemon",
+    "crates/stagelock-core",
+    "crates/stagelock-media",
+    "crates/stagelock-ptz",
+    "crates/stagelock-vision",
+    "crates/stagelock-tracking",
+    "crates/stagelock-integrations",
+    "crates/stagelock-daemon",
     "apps/desktop/src-tauri",
 ]
 

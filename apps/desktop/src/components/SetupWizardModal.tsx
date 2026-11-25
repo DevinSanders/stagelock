@@ -171,7 +171,7 @@ export const SetupWizardModal: React.FC<Props> = ({
             <span>MIT / Apache-2.0</span>
           </div>
           <div className="ndi-footer">
-            <strong>VideoController v0.1.0</strong> — Cross-platform GPU-accelerated multi-camera AI PTZ controller.
+            <strong>StageLock v0.1.0</strong> — AI PTZ Tracking &amp; Broadcast Studio.
             <br />
             NDI® is a registered trademark of Vizrt NDI AB. Learn more at{" "}
             <a href="https://ndi.video" target="_blank" rel="noreferrer">

@@ -52,10 +52,10 @@ try {
         $prevTarget = $env:CARGO_TARGET_DIR
         try {
             $env:RUSTFLAGS = "-C instrument-coverage"
-            $env:LLVM_PROFILE_FILE = Join-Path $covDir "vc-%p-%m.profraw"
+            $env:LLVM_PROFILE_FILE = Join-Path $covDir "stagelock-%p-%m.profraw"
             $env:CARGO_TARGET_DIR = Join-Path $repoRoot "target\cov-target"
 
-            $crates = @("vc-core", "vc-media", "vc-ptz", "vc-vision", "vc-tracking", "vc-integrations", "vc-daemon")
+            $crates = @("stagelock-core", "stagelock-media", "stagelock-ptz", "stagelock-vision", "stagelock-tracking", "stagelock-integrations", "stagelock-daemon")
             $pkgArgs = @()
             foreach ($c in $crates) { $pkgArgs += @("-p", $c) }
             $offlineArgs = if ($Offline) { @("--offline") } else { @() }
@@ -135,7 +135,7 @@ try {
     if (-not $RustOnly) {
         Write-Host ""
         Write-Host "=== Frontend UI Tests & V8 Coverage (Vitest + RTL) ===" -ForegroundColor Cyan
-        & pnpm --filter @videocontroller/desktop test:coverage
+        & pnpm --filter @stagelock/desktop test:coverage
         if ($LASTEXITCODE -ne 0) {
             $failed = $true
         }

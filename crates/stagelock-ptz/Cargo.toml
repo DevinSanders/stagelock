@@ -1,0 +1,20 @@
+[package]
+name = "stagelock-ptz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+chrono.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+roxmltree.workspace = true
+serde.workspace = true
+sha1.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+stagelock-core = { path = "../stagelock-core" }
+stagelock-media = { path = "../stagelock-media" }

@@ -1,6 +1,6 @@
 # Permissive Open-Source Vision Model Licenses
 
-VideoController strictly uses **permissive (Apache-2.0 / MIT)** computer vision weights so the entire project remains MIT / Apache-2.0 friendly (avoiding AGPL-3.0 model weights).
+StageLock strictly uses **permissive (Apache-2.0 / MIT)** computer vision weights so the entire project remains MIT / Apache-2.0 friendly (avoiding AGPL-3.0 model weights).
 
 | Role | Filename | Upstream Model | License |
 | :--- | :--- | :--- | :--- |

@@ -9,7 +9,7 @@ const BASE_CAM: CameraConfig = {
   enabled: true,
   source: { kind: "test_pattern", pattern: "smpte", width: 1280, height: 720, fps: 30 },
   ptz: { protocol: "mock" },
-  ndi_output: { enabled: true, stream_name: "VC - Stage", include_color_adjustments: true },
+  ndi_output: { enabled: true, stream_name: "StageLock - Stage", include_color_adjustments: true },
   framing: {
     auto_track_enabled: true,
     preset: "waist_up",

@@ -124,10 +124,10 @@ export const WebCodecsVideo: React.FC<Props> = ({
 
       if (!(evt.data instanceof ArrayBuffer) || evt.data.byteLength <= 20) return;
       const view = new DataView(evt.data);
-      // Verify 4-byte magic "VCH2"
+      // Verify 4-byte magic "SLH2"
       if (
-        view.getUint8(0) !== 0x56 ||
-        view.getUint8(1) !== 0x43 ||
+        view.getUint8(0) !== 0x53 ||
+        view.getUint8(1) !== 0x4c ||
         view.getUint8(2) !== 0x48 ||
         view.getUint8(3) !== 0x32
       ) {

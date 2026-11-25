@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs Windows MSVC development prerequisites for VideoController.
+    Installs Windows MSVC development prerequisites for StageLock.
     Run in an elevated (Administrator) PowerShell terminal.
 #>
 #Requires -RunAsAdministrator
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== VideoController Windows Toolchain Setup ===" -ForegroundColor Cyan
+Write-Host "=== StageLock Windows Toolchain Setup ===" -ForegroundColor Cyan
 
 # 1. Winget packages (installed sequentially)
 $packages = @(
@@ -36,7 +36,7 @@ if (-not $SkipVSBuildTools) {
 
 # 2. GStreamer 1.28+ unified MSVC installer (includes Runtime + Dev headers/libs)
 $gstBaseUrl = "https://gstreamer.freedesktop.org/data/pkg/windows/$GStreamerVersion/msvc"
-$tmpDir = Join-Path $env:TEMP "videocontroller-gst"
+$tmpDir = Join-Path $env:TEMP "stagelock-gst"
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 
 $file = "gstreamer-1.0-msvc-x86_64-$GStreamerVersion.exe"

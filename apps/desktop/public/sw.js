@@ -1,4 +1,4 @@
-const CACHE_NAME = "videocontroller-pwa-v1";
+const CACHE_NAME = "stagelock-pwa-v1";
 const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

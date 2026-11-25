@@ -118,7 +118,7 @@ export const RemoteAccessModal: React.FC<Props> = ({ onClose }) => {
                   wordBreak: "break-all",
                 }}
               >
-                New-NetFirewallRule -DisplayName &quot;VideoController Remote&quot; -Direction Inbound -Protocol TCP -LocalPort {info.http_port} -Action Allow
+                New-NetFirewallRule -DisplayName &quot;StageLock Remote&quot; -Direction Inbound -Protocol TCP -LocalPort {info.http_port} -Action Allow
               </code>
             </div>
           </>

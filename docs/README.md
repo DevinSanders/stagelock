@@ -1,6 +1,6 @@
 # Documentation
 
-Reference documentation, licensing attributions, and broadcast integration guides for **VideoController**.
+Reference documentation, licensing attributions, and broadcast integration guides for **StageLock**.
 
 | Document | Description |
 | :--- | :--- |

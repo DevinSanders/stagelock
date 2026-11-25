@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "VideoController",
+  "productName": "StageLock",
   "version": "0.1.0",
-  "identifier": "io.videocontroller.studio",
+  "identifier": "com.stagelock.studio",
   "build": {
     "beforeDevCommand": "pnpm dev:web",
     "devUrl": "http://127.0.0.1:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "VideoController — Multi-Camera AI PTZ Studio",
+        "title": "StageLock — AI PTZ Tracking & Broadcast Studio",
         "width": 1520,
         "height": 940,
         "minWidth": 1120,
@@ -29,9 +29,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "copyright": "Copyright © 2026 VideoController Contributors (MIT OR Apache-2.0)",
+    "copyright": "Copyright © 2026 StageLock Contributors (MIT OR Apache-2.0)",
     "category": "Video",
-    "shortDescription": "Multi-camera preview, NDI re-broadcast, and AI auto-tracking PTZ studio controller",
+    "shortDescription": "AI PTZ Tracking & Broadcast Studio — multi-camera preview, NDI re-broadcast, and autonomous framing",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

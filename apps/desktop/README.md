@@ -1,13 +1,13 @@
-# VideoController Desktop Studio (Tauri 2) & Mobile/Tablet Remote PWA
+# StageLock Desktop Studio (Tauri 2) & Mobile/Tablet Remote PWA
 
 Cross-platform **Tauri 2 + React + TypeScript** broadcast studio application and responsive LAN **Progressive Web App (PWA)** for iPhone, iPad, and Android.
 
 ## Architecture
 
 - **Native Tauri 2 Shell (`src-tauri/`):**
-  - Embeds [`vc-daemon`](../../crates/vc-daemon/README.md) **in-process** inside a single compact Rust executable (zero child-process spawning, zero orphan-process leaks, instant SQLite WAL checkpoint on `RunEvent::Exit`).
+  - Embeds [`stagelock-daemon`](../../crates/stagelock-daemon/README.md) **in-process** inside a single compact Rust executable (zero child-process spawning, zero orphan-process leaks, instant SQLite WAL checkpoint on `RunEvent::Exit`).
   - Uses OS WebViews (**WebView2** on Windows, **WKWebView** on macOS, **WebKitGTK** on Linux) for low idle RAM overhead alongside vMix, NDI Tools, and ONNX Runtime.
-  - Set `VC_EXTERNAL_DAEMON=1` if you want the desktop UI to attach to a separate headless `vc-daemon` instance instead.
+  - Set `STAGELOCK_EXTERNAL_DAEMON=1` if you want the desktop UI to attach to a separate headless `stagelock-daemon` instance instead.
 - **Ultra-Low-Latency Video Preview (`WebCodecsVideo.tsx`):**
   - Connects to `ws://<host>:8765/ws/video/{id}` and decodes GPU zero-latency H.264 Annex-B (`nvh264enc`/`amfh264enc`/`qsvh264enc`/`vtenc_h264_hw`/`mfh264enc`/`openh264enc`) directly via browser **WebCodecs `VideoDecoder`** (`optimizeForLatency: true`) onto `<canvas>`.
   - Transparently falls back to rate-limited MJPEG (`/stream.mjpeg?max_fps=12`) on browsers or hosts without WebCodecs/H.264.
@@ -19,7 +19,7 @@ Cross-platform **Tauri 2 + React + TypeScript** broadcast studio application and
 Run from the repository root:
 
 ```pwsh
-# Development (Vite dev server + Tauri 2 desktop window with embedded vc-daemon)
+# Development (Vite dev server + Tauri 2 desktop window with embedded stagelock-daemon)
 pnpm dev:ui
 
 # Typecheck & build production UI + LAN PWA bundle (outputs to dist/)
@@ -35,4 +35,4 @@ pnpm package:mac    # macOS .dmg
 pnpm package:linux  # Linux .AppImage + .deb
 ```
 
-See also: [Root README](../../README.md) · [`vc-daemon` API](../../crates/vc-daemon/README.md)
+See also: [Root README](../../README.md) · [`stagelock-daemon` API](../../crates/stagelock-daemon/README.md)

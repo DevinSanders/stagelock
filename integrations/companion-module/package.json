@@ -1,7 +1,7 @@
 {
-  "name": "companion-module-videocontroller",
+  "name": "companion-module-stagelock",
   "version": "0.1.0",
-  "description": "Bitfocus Companion & Buttons connection module for VideoController AI PTZ Studio",
+  "description": "Bitfocus Companion & Buttons connection module for StageLock — AI PTZ Tracking & Broadcast Studio",
   "license": "MIT",
   "main": "dist/main.js",
   "scripts": {

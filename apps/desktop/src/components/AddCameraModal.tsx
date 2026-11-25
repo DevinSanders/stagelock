@@ -227,7 +227,7 @@ export const AddCameraModal: React.FC<Props> = ({ onClose, onCreate }) => {
       ptz,
       ndi_output: {
         enabled: false,
-        stream_name: `VC - ${name}`,
+        stream_name: `StageLock - ${name}`,
         include_color_adjustments: true,
       },
       framing: {

@@ -1,6 +1,6 @@
-# Bitfocus Companion / Buttons Module (`companion-module-videocontroller`)
+# Bitfocus Companion / Buttons Module (`companion-module-stagelock`)
 
-First-party TypeScript module built on `@companion-module/base` for controlling **VideoController** from **Bitfocus Companion**, **Bitfocus Buttons**, Elgato **Stream Deck**, and **Stream Deck +** (including rotary dials).
+First-party TypeScript module built on `@companion-module/base` for controlling **StageLock** from **Bitfocus Companion**, **Bitfocus Buttons**, Elgato **Stream Deck**, and **Stream Deck +** (including rotary dials).
 
 ## Features
 
@@ -14,7 +14,7 @@ First-party TypeScript module built on `@companion-module/base` for controlling 
   - Toggle NDI® Re-Broadcast per camera
   - **Stream Deck + Rotary Dials:** Smooth incremental Zoom, Focus, Exposure, and White Balance adjustments
   - vMix Cut / Fade switching
-- **Dynamic Variables & Drag-and-Drop Presets:** Automatically populated from your VideoController camera list on connect.
+- **Dynamic Variables & Drag-and-Drop Presets:** Automatically populated from your StageLock camera list on connect.
 
 ## Building
 
@@ -22,15 +22,15 @@ From the repository root:
 
 ```pwsh
 pnpm install
-pnpm --filter companion-module-videocontroller build
+pnpm --filter companion-module-stagelock build
 ```
 
 Compiled JavaScript outputs to `dist/` alongside the module metadata in `companion/manifest.json`.
 
 ## Loading in Bitfocus Companion (Developer Mode)
 
-1. Build the module (`pnpm --filter companion-module-videocontroller build`).
+1. Build the module (`pnpm --filter companion-module-stagelock build`).
 2. In Bitfocus Companion settings, point the **Developer Modules Path** to the parent `integrations/` directory (or copy `dist/`, `companion/`, and `package.json` into a module folder).
-3. Add a **VideoController** connection pointing to your studio PC host and port (`127.0.0.1:8765` locally or your LAN IP).
+3. Add a **StageLock** connection pointing to your studio PC host and port (`127.0.0.1:8765` locally or your LAN IP).
 
-> **Tip:** When using Bitfocus Companion or Bitfocus Buttons with a Stream Deck, leave **Direct USB Stream Deck** disabled in VideoController's Integrations panel so Bitfocus retains exclusive USB HID access.
+> **Tip:** When using Bitfocus Companion or Bitfocus Buttons with a Stream Deck, leave **Direct USB Stream Deck** disabled in StageLock's Integrations panel so Bitfocus retains exclusive USB HID access.

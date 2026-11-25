@@ -58,7 +58,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build:ui
-          pnpm --filter companion-module-videocontroller build
+          pnpm --filter companion-module-stagelock build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -76,13 +76,13 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           mkdir -p release-extras
-          tar -czf release-extras/videocontroller-companion-module-${{ github.ref_name }}.tar.gz \
+          tar -czf release-extras/stagelock-companion-module-${{ github.ref_name }}.tar.gz \
             -C integrations/companion-module dist companion package.json
 
       - name: Upload ${{ matrix.platform }} release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: videocontroller-${{ matrix.platform }}-installers
+          name: stagelock-${{ matrix.platform }}-installers
           if-no-files-found: error
           path: |
             ${{ matrix.artifact_glob }}
@@ -120,5 +120,5 @@ jobs:
           fi
           gh release create "${GITHUB_REF_NAME}" "${FILES[@]}" \
             "${EXTRA_FLAGS[@]}" \
-            --title "VideoController ${GITHUB_REF_NAME}" \
+            --title "StageLock ${GITHUB_REF_NAME}" \
             --generate-notes

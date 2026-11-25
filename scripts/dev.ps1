@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Builds the Remote PWA assets and launches the VideoController Tauri 2 desktop studio
-    (with vc-daemon embedded in-process and LAN Remote PWA served on :8765).
+    Builds the Remote PWA assets and launches the StageLock Tauri 2 desktop studio
+    (with stagelock-daemon embedded in-process and LAN Remote PWA served on :8765).
 #>
 $ErrorActionPreference = "Continue"
 
@@ -39,8 +39,8 @@ try {
         exit $LASTEXITCODE
     }
 
-    Write-Host "Launching VideoController Tauri 2 Studio (embedded vc-daemon + LAN PWA on http://<LAN-IP>:8765)..." -ForegroundColor Green
-    & pnpm --filter @videocontroller/desktop tauri dev @tauriExtraArgs
+    Write-Host "Launching StageLock Tauri 2 Studio (embedded stagelock-daemon + LAN PWA on http://<LAN-IP>:8765)..." -ForegroundColor Green
+    & pnpm --filter @stagelock/desktop tauri dev @tauriExtraArgs
     exit $LASTEXITCODE
 }
 finally {

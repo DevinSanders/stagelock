@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Automated multi-camera reliability & soak test for vc-daemon (release binary).
+    Automated multi-camera reliability & soak test for stagelock-daemon (release binary).
     Spawns 4 concurrent live cameras (tracking + CV + NDI re-broadcast + color grading + Stream Deck triggers)
     and verifies memory stability, handle stability, JPEG frame delivery, and clean shutdown.
 #>
@@ -13,13 +13,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$daemonExe = Join-Path $repoRoot "target\release\vc-daemon.exe"
+$daemonExe = Join-Path $repoRoot "target\release\stagelock-daemon.exe"
 if (-not (Test-Path $daemonExe)) {
-    $daemonExe = Join-Path $repoRoot "target\debug\vc-daemon.exe"
+    $daemonExe = Join-Path $repoRoot "target\debug\stagelock-daemon.exe"
 }
 
-$tmpCfg = Join-Path $env:TEMP "vc-soak-config.json"
-$tmpDb = Join-Path $env:TEMP "vc-soak-config.db"
+$tmpCfg = Join-Path $env:TEMP "stagelock-soak-config.json"
+$tmpDb = Join-Path $env:TEMP "stagelock-soak-config.db"
 Remove-Item $tmpCfg, $tmpDb, "$tmpDb-wal", "$tmpDb-shm" -ErrorAction SilentlyContinue
 $camIds = @(
     "11111111-1111-1111-1111-111111111101",
@@ -55,10 +55,10 @@ $cfgObj = @{
 }
 $cfgObj | ConvertTo-Json -Depth 8 | Set-Content -Path $tmpCfg
 
-$env:VC_CONFIG_PATH = $tmpCfg
-$env:VC_BIND_ADDR = "127.0.0.1"
+$env:STAGELOCK_CONFIG_PATH = $tmpCfg
+$env:STAGELOCK_BIND_ADDR = "127.0.0.1"
 
-Write-Host "=== VideoController 4-Camera Soak Test ($DurationSeconds s) ===" -ForegroundColor Cyan
+Write-Host "=== StageLock 4-Camera Soak Test ($DurationSeconds s) ===" -ForegroundColor Cyan
 Write-Host "Binary: $daemonExe" -ForegroundColor Gray
 
 $proc = Start-Process -FilePath $daemonExe -PassThru -WindowStyle Hidden

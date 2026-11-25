@@ -27,7 +27,7 @@ interface TelemetryCam {
   focus_sharpness: number;
 }
 
-class VideoControllerInstance extends InstanceBase<ModuleConfig> {
+class StageLockInstance extends InstanceBase<ModuleConfig> {
   private config: ModuleConfig = { host: "127.0.0.1", port: 8765 };
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -67,7 +67,7 @@ class VideoControllerInstance extends InstanceBase<ModuleConfig> {
       {
         type: "textinput",
         id: "host",
-        label: "VideoController Host / IP",
+        label: "StageLock Host / IP",
         width: 8,
         default: "127.0.0.1",
       },
@@ -95,7 +95,7 @@ class VideoControllerInstance extends InstanceBase<ModuleConfig> {
         body: JSON.stringify(action),
       });
     } catch (err) {
-      this.log("warn", `Failed sending VideoController action: ${String(err)}`);
+      this.log("warn", `Failed sending StageLock action: ${String(err)}`);
     }
   }
 
@@ -107,7 +107,7 @@ class VideoControllerInstance extends InstanceBase<ModuleConfig> {
 
     ws.on("open", () => {
       this.updateStatus(InstanceStatus.Ok);
-      this.log("info", `Connected to VideoController at ${url}`);
+      this.log("info", `Connected to StageLock at ${url}`);
     });
 
     ws.on("message", (raw) => {
@@ -425,4 +425,4 @@ class VideoControllerInstance extends InstanceBase<ModuleConfig> {
   }
 }
 
-runEntrypoint(VideoControllerInstance, []);
+runEntrypoint(StageLockInstance, []);

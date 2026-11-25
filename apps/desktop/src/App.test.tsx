@@ -23,7 +23,7 @@ const CAM1: CameraConfig = {
   enabled: true,
   source: { kind: "test_pattern", pattern: "smpte", width: 1280, height: 720, fps: 30 },
   ptz: { protocol: "mock" },
-  ndi_output: { enabled: false, stream_name: "VC - Cam 1", include_color_adjustments: true },
+  ndi_output: { enabled: false, stream_name: "StageLock - Cam 1", include_color_adjustments: true },
   framing: {
     auto_track_enabled: false,
     preset: "waist_up",
@@ -257,7 +257,7 @@ describe("App end-to-end user workflows (Desktop Studio & Mobile PWA, happy & fa
     // Color / NDI Tab (NDI out, Layer-1 imaging, Layer-2 grading, Reset, Remove Camera)
     fireEvent.click(screen.getByRole("button", { name: "Color / NDI" }));
     fireEvent.click(screen.getByRole("button", { name: "Start NDI Out" }));
-    fireEvent.change(screen.getByDisplayValue("VC - Cam 1"), { target: { value: "VC - Main" } });
+    fireEvent.change(screen.getByDisplayValue("StageLock - Cam 1"), { target: { value: "StageLock - Main" } });
     fireEvent.click(screen.getByRole("checkbox"));
     expect(updateNdi).toHaveBeenCalled();
 

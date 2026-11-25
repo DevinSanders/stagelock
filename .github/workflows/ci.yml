@@ -43,7 +43,7 @@ jobs:
         run: pnpm build:ui
 
       - name: Build Bitfocus Companion / Buttons module
-        run: pnpm --filter companion-module-videocontroller build
+        run: pnpm --filter companion-module-stagelock build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -57,7 +57,7 @@ jobs:
         run: cargo test --all-targets
 
       - name: Check Tauri 2 desktop binary
-        run: cargo check -p videocontroller-desktop
+        run: cargo check -p stagelock-desktop
 
-      - name: Build optimized standalone vc-daemon release binary
-        run: cargo build --release -p vc-daemon
+      - name: Build optimized standalone stagelock-daemon release binary
+        run: cargo build --release -p stagelock-daemon

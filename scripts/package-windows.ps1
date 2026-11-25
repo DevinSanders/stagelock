@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Builds production Windows installers & bundles for VideoController (Tauri 2):
-    - Rust standalone headless vc-daemon (--release) with embedded SQLite
+    Builds production Windows installers & bundles for StageLock (Tauri 2):
+    - Rust standalone headless stagelock-daemon (--release) with embedded SQLite
     - React/Vite Desktop Studio + LAN Mobile/Tablet Remote PWA
     - Bitfocus Companion / Buttons module
-    - Compact native Tauri 2 Windows NSIS (.exe) & MSI (.msi) installers with embedded vc-daemon
+    - Compact native Tauri 2 Windows NSIS (.exe) & MSI (.msi) installers with embedded stagelock-daemon
 #>
 [CmdletBinding()]
 param(
@@ -36,8 +36,8 @@ try {
         Write-Host "GStreamer MSVC SDK detected: enabling in-process gst-native low-latency pipeline." -ForegroundColor Cyan
     }
 
-    Write-Host "1/5 Building standalone headless vc-daemon (release)..." -ForegroundColor Cyan
-    & cargo build --release -p vc-daemon @cargoFeatureArgs
+    Write-Host "1/5 Building standalone headless stagelock-daemon (release)..." -ForegroundColor Cyan
+    & cargo build --release -p stagelock-daemon @cargoFeatureArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host "2/5 Building Desktop UI + Mobile/Tablet PWA..." -ForegroundColor Cyan
@@ -45,7 +45,7 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host "3/5 Building Bitfocus Companion / Buttons module..." -ForegroundColor Cyan
-    & pnpm --filter companion-module-videocontroller build
+    & pnpm --filter companion-module-stagelock build
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host "4/5 Staging portable headless daemon & Companion bundle..." -ForegroundColor Cyan
@@ -54,7 +54,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $stage "web") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $stage "companion-module") | Out-Null
 
-    Copy-Item -Force (Join-Path $repoRoot "target\release\vc-daemon.exe") (Join-Path $stage "bin\vc-daemon.exe")
+    Copy-Item -Force (Join-Path $repoRoot "target\release\stagelock-daemon.exe") (Join-Path $stage "bin\stagelock-daemon.exe")
     Copy-Item -Recurse -Force (Join-Path $repoRoot "apps\desktop\dist\*") (Join-Path $stage "web\")
     Copy-Item -Recurse -Force (Join-Path $repoRoot "integrations\companion-module\dist") (Join-Path $stage "companion-module\")
     Copy-Item -Recurse -Force (Join-Path $repoRoot "integrations\companion-module\companion") (Join-Path $stage "companion-module\")
@@ -65,7 +65,7 @@ try {
 
     if (-not $SkipInstaller) {
         Write-Host "5/5 Building Tauri 2 Windows NSIS (.exe) & MSI (.msi) installers..." -ForegroundColor Cyan
-        & pnpm --filter @videocontroller/desktop tauri build --bundles nsis,msi @cargoFeatureArgs
+        & pnpm --filter @stagelock/desktop tauri build --bundles nsis,msi @cargoFeatureArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         Write-Host ""
