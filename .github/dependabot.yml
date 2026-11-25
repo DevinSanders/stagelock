@@ -1,0 +1,55 @@
+version: 2
+updates:
+  # Rust workspace crates (grouped so shared workspace dependencies move in lockstep).
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      cargo-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  # Frontend Tauri 2 + React UI and Bitfocus Companion module (pnpm workspace).
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/apps/desktop"
+      - "/integrations/companion-module"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  # Pinned versions of GitHub Actions in workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"

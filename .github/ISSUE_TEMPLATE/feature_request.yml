@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a new camera protocol, tracking capability, integration, or studio workflow improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow need
+      description: What live production or studio workflow are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe how you'd like StageLock to behave.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Hardware / software ecosystem context
+      placeholder: "e.g. vMix 28, Bitfocus Companion 3.x, Stream Deck+, Sony FR7, Panasonic AW-UE100..."

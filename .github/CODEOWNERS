@@ -1,0 +1,6 @@
+# Code owners for stagelock.
+#
+# Every PR automatically requests review from the listed owner(s) for the
+# matching paths. Solo maintainer setup — everything routes to @DevinSanders.
+
+*       @DevinSanders

@@ -5,8 +5,8 @@
   "description": "StageLock — AI PTZ Tracking & Broadcast Studio (Framing, NDI Output & vMix Switcher Control)",
   "version": "0.1.0",
   "license": "MIT",
-  "repository": "git+https://github.com/stagelock/stagelock.git",
-  "bugs": "https://github.com/stagelock/stagelock/issues",
+  "repository": "git+https://github.com/DevinSanders/stagelock.git",
+  "bugs": "https://github.com/DevinSanders/stagelock/issues",
   "maintainers": [
     {
       "name": "StageLock Contributors"
