@@ -1,55 +1,33 @@
 version: 2
+
+# Consolidate all Cargo, pnpm/npm, and GitHub Actions updates (major, minor, and patch)
+# into a single weekly PR.
+multi-ecosystem-groups:
+  all-dependencies:
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 1
+
 updates:
-  # Rust workspace crates (grouped so shared workspace dependencies move in lockstep).
+  # Rust workspace crates (root Cargo.toml covers all workspace members).
   - package-ecosystem: "cargo"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      cargo-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      cargo-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+    multi-ecosystem-group: "all-dependencies"
+    patterns:
+      - "*"
 
   # Frontend Tauri 2 + React UI and Bitfocus Companion module (pnpm workspace).
+  # Root "/" alone resolves all pnpm-workspace.yaml packages without duplicate PRs.
   - package-ecosystem: "npm"
-    directories:
-      - "/"
-      - "/apps/desktop"
-      - "/integrations/companion-module"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      npm-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      npm-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
+    directory: "/"
+    multi-ecosystem-group: "all-dependencies"
+    patterns:
+      - "*"
 
   # Pinned versions of GitHub Actions in workflows.
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 3
-    groups:
-      github-actions:
-        patterns:
-          - "*"
+    multi-ecosystem-group: "all-dependencies"
+    patterns:
+      - "*"
