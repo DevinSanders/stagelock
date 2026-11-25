@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "GPL-3.0-only",
-  "packageManager": "pnpm@12.21.0",
+  "packageManager": "pnpm@12.23.0",
   "scripts": {
     "dev:ui": "pnpm --filter @stagelock/desktop dev",
     "build:ui": "pnpm --filter @stagelock/desktop build",

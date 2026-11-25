@@ -34,5 +34,5 @@ stagelock-vision = { path = "../stagelock-vision" }
 
 [dev-dependencies]
 http-body-util = "0.1"
-tempfile = "3.19"
+tempfile = "3.27"
 tower = { version = "0.5", features = ["util"] }
