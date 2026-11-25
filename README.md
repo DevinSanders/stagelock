@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/stagelock-logo.svg" alt="StageLock — AI PTZ Tracking &amp; Broadcast Studio" width="620" />
+</p>
+
 # StageLock — AI PTZ Tracking & Broadcast Studio
 
 Cross-platform, GPU-accelerated multi-camera preview (**zero-latency GPU H.264 WebCodecs + MJPEG fallback**), **NDI® re-broadcast**, **event-driven AI subject auto-tracking & broadcast framing**, **vMix live tally/switching**, **Stream Deck + Bitfocus Companion/Buttons**, and **Mobile/Tablet Remote PWA** studio controller built with **Rust + GStreamer + ONNX Runtime (`ort`)** and **Tauri 2 (React + TypeScript)**.

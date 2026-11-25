@@ -1,11 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0a0d12"/>
-  <rect x="36" y="36" width="440" height="440" rx="88" fill="#111620" stroke="#283347" stroke-width="14"/>
-  <line x1="184" y1="76" x2="184" y2="436" stroke="#283347" stroke-width="6" stroke-dasharray="14 14"/>
-  <line x1="328" y1="76" x2="328" y2="436" stroke="#283347" stroke-width="6" stroke-dasharray="14 14"/>
-  <line x1="76" y1="184" x2="436" y2="184" stroke="#283347" stroke-width="6" stroke-dasharray="14 14"/>
-  <line x1="76" y1="328" x2="436" y2="328" stroke="#283347" stroke-width="6" stroke-dasharray="14 14"/>
-  <circle cx="256" cy="256" r="102" fill="none" stroke="#38bdf8" stroke-width="22"/>
-  <circle cx="256" cy="256" r="34" fill="#22c55e"/>
-  <path d="M132 168 L132 132 L168 132 M344 132 L380 132 L380 168 M132 344 L132 380 L168 380 M344 380 L380 380 L380 344" fill="none" stroke="#38bdf8" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#090c11"/>
+    </linearGradient>
+    <linearGradient id="cyan-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#56ccf2"/>
+      <stop offset="100%" stop-color="#22a7f0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Studio obsidian squircle tile -->
+  <rect width="512" height="512" rx="108" fill="url(#bg-grad)"/>
+  <rect x="10" y="10" width="492" height="492" rx="98" fill="none" stroke="#1e293b" stroke-width="5"/>
+
+  <!-- Alternating Viewfinder Corner Tracking Brackets -->
+  <g fill="none" stroke-width="16" stroke-linecap="square" stroke-linejoin="miter">
+    <!-- Top-Left (White) -->
+    <path d="M 76 148 V 76 H 148" stroke="#f1f5f9"/>
+    <!-- Top-Right (Cyan) -->
+    <path d="M 364 76 H 436 V 148" stroke="url(#cyan-grad)"/>
+    <!-- Bottom-Left (Cyan) -->
+    <path d="M 76 364 V 436 H 148" stroke="url(#cyan-grad)"/>
+    <!-- Bottom-Right (White) -->
+    <path d="M 364 436 H 436 V 364" stroke="#f1f5f9"/>
+  </g>
+
+  <!-- Geometric Architectural "S" (White) -->
+  <path
+    d="M 114 114 H 242 V 218 L 210 194 V 146 H 146 V 206 L 242 276 V 398 H 114 V 294 L 146 318 V 366 H 210 V 294 L 114 224 Z"
+    fill="#f1f5f9"
+  />
+
+  <!-- Geometric Architectural "L" (Sky Cyan) -->
+  <path
+    d="M 270 114 H 302 V 366 H 398 V 398 H 270 Z"
+    fill="url(#cyan-grad)"
+  />
+
+  <!-- Subject-Lock Focus Diamond Reticle -->
+  <g fill="none" stroke="#f1f5f9" stroke-width="11" stroke-linecap="butt">
+    <path d="M 366 218 L 394 246"/>
+    <path d="M 394 260 L 366 288"/>
+    <path d="M 352 288 L 324 260"/>
+    <path d="M 324 246 L 352 218"/>
+  </g>
+
+  <!-- Broadcast Live Tally Red Indicator -->
+  <circle cx="394" cy="118" r="14" fill="#ef4444"/>
 </svg>

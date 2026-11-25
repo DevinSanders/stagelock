@@ -191,6 +191,7 @@ export const App: React.FC = () => {
     <div className={`app-shell ${isCompact ? "is-compact" : ""}`}>
       <header className="topbar">
         <div className="brand">
+          <img src="/icon.svg" alt="StageLock" className="brand-logo" />
           <span className={`brand-dot ${connected ? "online" : "offline"}`} />
           <span>StageLock</span>
           <span className="brand-sub">{IS_ELECTRON ? "AI PTZ Tracking & Broadcast Studio" : "Remote PWA"}</span>
