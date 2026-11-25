@@ -2,7 +2,7 @@
   "name": "stagelock-workspace",
   "version": "0.1.0",
   "private": true,
-  "license": "Apache-2.0 OR MIT",
+  "license": "GPL-3.0-only",
   "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev:ui": "pnpm --filter @stagelock/desktop dev",

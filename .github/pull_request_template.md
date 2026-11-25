@@ -25,6 +25,6 @@
 - [ ] `cargo test --all-targets` passes locally (happy and failure paths covered)
 - [ ] `pnpm test:ui:coverage` passes locally (`>= 90%` coverage gate) and `pnpm build:ui` succeeds
 - [ ] `pnpm --filter companion-module-stagelock build` succeeds if Companion code changed
-- [ ] New dependencies and AI weights are permissive OSS only (`MIT`, `Apache-2.0`, `BSD` — no GPL/AGPL)
+- [ ] New dependencies and AI weights are GPL-3.0-compatible (preferring MIT, Apache-2.0, BSD, or LGPL; no AGPL-3.0 weights)
 - [ ] If SQLite schema changed in `crates/stagelock-core/src/store.rs`, a versioned migration was added cleanly
 - [ ] Mandatory Vizrt NDI® trademark notices (`docs/ndi-attribution.md`, `ndi.video`) remain intact

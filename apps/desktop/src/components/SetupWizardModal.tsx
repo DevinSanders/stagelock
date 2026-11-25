@@ -168,7 +168,7 @@ export const SetupWizardModal: React.FC<Props> = ({
         <div className="section" style={{ gap: 6 }}>
           <div className="section-title">
             <span>About &amp; Trademark Attribution</span>
-            <span>MIT / Apache-2.0</span>
+            <span>GPL-3.0</span>
           </div>
           <div className="ndi-footer">
             <strong>StageLock v0.1.0</strong> — AI PTZ Tracking &amp; Broadcast Studio.

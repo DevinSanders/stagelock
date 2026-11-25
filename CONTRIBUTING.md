@@ -38,7 +38,7 @@ pnpm test:ui:coverage
 
 ## Key Conventions
 
-- **Permissive Licensing Only:** All code, dependencies, and AI vision weights must remain compatible with `MIT OR Apache-2.0` (no GPL/AGPL crates, codecs such as `x264`, or AGPL vision weights).
+- **Licensing & Compatibility:** StageLock is licensed under **GPL-3.0-only** (with [LICENSE-EXCEPTION](LICENSE-EXCEPTION) for NDI® and hardware media runtimes), while `integrations/companion-module/` is independently **MIT**. Keep dependencies and AI weights GPLv3-compatible (preferring MIT, Apache-2.0, BSD, and LGPL; avoid AGPL-3.0 model weights).
 - **SQLite Persistence:** Schema changes in `crates/stagelock-core/src/store.rs` must use versioned migrations and keep WAL mode intact.
 - **NDI® Attribution:** Preserve Vizrt NDI® trademark notices (`docs/ndi-attribution.md` and `ndi.video` references).
 - **Pull Requests:** Open PRs against `main`. CI runs on Windows, macOS, and Linux and must pass before merging.

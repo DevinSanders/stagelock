@@ -59,8 +59,8 @@ try {
     Copy-Item -Recurse -Force (Join-Path $repoRoot "integrations\companion-module\dist") (Join-Path $stage "companion-module\")
     Copy-Item -Recurse -Force (Join-Path $repoRoot "integrations\companion-module\companion") (Join-Path $stage "companion-module\")
     Copy-Item -Force (Join-Path $repoRoot "integrations\companion-module\package.json") (Join-Path $stage "companion-module\")
-    Copy-Item -Force (Join-Path $repoRoot "LICENSE-APACHE") $stage
-    Copy-Item -Force (Join-Path $repoRoot "LICENSE-MIT") $stage
+    Copy-Item -Force (Join-Path $repoRoot "LICENSE") $stage
+    Copy-Item -Force (Join-Path $repoRoot "LICENSE-EXCEPTION") $stage
     Copy-Item -Force (Join-Path $repoRoot "docs\ndi-attribution.md") $stage
 
     if (-not $SkipInstaller) {

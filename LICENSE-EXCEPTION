@@ -1,0 +1,40 @@
+StageLock Broadcast Runtime & Companion Module Exception
+
+As a special exception to the terms and conditions of version 3.0 of the
+GNU General Public License (GPLv3), under Section 7 of the GPLv3, the
+copyright holders of StageLock grant the following additional permissions:
+
+1. Broadcast Media, GPU & Capture Runtime Linking Exception
+
+Permission is granted to link, dynamically load, interface with, and
+distribute StageLock in combination with the following non-GPL system,
+broadcast, and hardware runtime libraries (collectively, "Broadcast
+Runtimes"), even if those runtimes are distributed under proprietary or
+GPL-incompatible terms:
+
+  - Vizrt NDI® Runtime libraries (e.g. Processing.NDI.Lib.x64.dll,
+    libndi.dylib, libndi.so.*) distributed by Vizrt NDI AB
+    (https://ndi.video)
+  - Hardware video encode/decode and AI inference runtimes provided by
+    GPU and OS vendors (NVIDIA CUDA / TensorRT / NVDEC / NVENC, AMD AMF /
+    ROCm, Intel QuickSync / OpenVINO, Apple VideoToolbox / CoreML,
+    Windows Direct3D 11 / DirectML / MediaFoundation, Linux VAAPI)
+  - Blackmagic Design Desktop Video / DeckLink capture runtimes
+  - Hardware control surface SDKs / OS HID runtimes (e.g. Elgato Stream
+    Deck, USB HID)
+
+You must still obey the GNU General Public License v3.0 in all respects
+for all of the StageLock source code and any modifications thereto, other
+than the Broadcast Runtimes listed above.
+
+2. Standalone Bitfocus Companion / Buttons Module (MIT License)
+
+The Bitfocus Companion / Buttons integration module located under
+`integrations/companion-module/` communicates with StageLock solely over
+documented HTTP and WebSocket network APIs and is independently licensed
+under the MIT License (see `integrations/companion-module/LICENSE`) to
+maintain compatibility with the Bitfocus Companion module ecosystem.
+
+If you modify StageLock, you may extend this exception to your modified
+version, but you are not obligated to do so. If you do not wish to extend
+it, delete this exception statement from your version.

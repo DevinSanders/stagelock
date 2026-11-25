@@ -29,7 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "copyright": "Copyright © 2026 StageLock Contributors (MIT OR Apache-2.0)",
+    "copyright": "Copyright © 2026 Devin Sanders (GPL-3.0-only)",
     "category": "Video",
     "shortDescription": "AI PTZ Tracking & Broadcast Studio — multi-camera preview, NDI re-broadcast, and autonomous framing",
     "icon": [
@@ -43,8 +43,8 @@
     "resources": {
       "../dist/**/*": "web/",
       "../../../docs/ndi-attribution.md": "docs/ndi-attribution.md",
-      "../../../LICENSE-MIT": "docs/LICENSE-MIT",
-      "../../../LICENSE-APACHE": "docs/LICENSE-APACHE",
+      "../../../LICENSE": "docs/LICENSE",
+      "../../../LICENSE-EXCEPTION": "docs/LICENSE-EXCEPTION",
       "../../../integrations/companion-module/dist/**/*": "companion-module/dist/",
       "../../../integrations/companion-module/companion/**/*": "companion-module/companion/",
       "../../../integrations/companion-module/package.json": "companion-module/package.json"

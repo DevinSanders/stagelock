@@ -6,7 +6,7 @@
 
 Cross-platform, GPU-accelerated multi-camera preview (**zero-latency GPU H.264 WebCodecs + MJPEG fallback**), **NDI® re-broadcast**, **event-driven AI subject auto-tracking & broadcast framing**, **vMix live tally/switching**, **Stream Deck + Bitfocus Companion/Buttons**, and **Mobile/Tablet Remote PWA** studio controller built with **Rust + GStreamer + ONNX Runtime (`ort`)** and **Tauri 2 (React + TypeScript)**.
 
-Licensed under **MIT OR Apache-2.0** ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)).
+Licensed under **GNU GPLv3** with a Broadcast Runtime Linking Exception ([LICENSE](LICENSE), [LICENSE-EXCEPTION](LICENSE-EXCEPTION)); the standalone Bitfocus Companion module under `integrations/companion-module/` is licensed under **MIT** ([LICENSE](integrations/companion-module/LICENSE)).
 
 > **NDI® Notice:** NDI® is a registered trademark of Vizrt NDI AB. Learn more at [ndi.video](https://ndi.video) or download NDI Tools at [ndi.video/tools](https://ndi.video/tools). See [docs/ndi-attribution.md](docs/ndi-attribution.md).
 
