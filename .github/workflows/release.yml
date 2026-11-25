@@ -93,12 +93,47 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all platform installers
         uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
           merge-multiple: true
+
+      - name: Generate categorized release notes (with direct-commit fallback)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep -vxF "${GITHUB_REF_NAME}" | head -n 1 || true)
+
+          # Generate PR-categorized release notes using .github/release.yml
+          GEN_ARGS=(-f "tag_name=${GITHUB_REF_NAME}")
+          if [ -n "${PREV_TAG}" ]; then
+            GEN_ARGS+=(-f "previous_tag_name=${PREV_TAG}")
+          fi
+          NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" "${GEN_ARGS[@]}" --jq '.body' || true)
+
+          # Fall back to summarizing direct commits on main when no merged PR bullets exist
+          if ! printf '%s\n' "${NOTES}" | grep -qE '^(\*|-) '; then
+            if [ -n "${PREV_TAG}" ]; then
+              COMMITS=$(git log --no-merges --pretty=format:"* %s (%h)" "${PREV_TAG}..${GITHUB_REF_NAME}" | head -n 50)
+            else
+              COMMITS=$(git log --no-merges --pretty=format:"* %s (%h)" "${GITHUB_REF_NAME}" | head -n 50)
+            fi
+            {
+              echo "## What's Changed"
+              echo ""
+              echo "${COMMITS}"
+              if [ -n "${NOTES}" ]; then
+                echo ""
+                echo "${NOTES}"
+              fi
+            } > release-notes.md
+          else
+            printf '%s\n' "${NOTES}" > release-notes.md
+          fi
 
       - name: Publish GitHub Release for ${{ github.ref_name }}
         env:
@@ -119,4 +154,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" "${FILES[@]}" \
             "${EXTRA_FLAGS[@]}" \
             --title "StageLock ${GITHUB_REF_NAME}" \
-            --generate-notes
+            --notes-file release-notes.md
