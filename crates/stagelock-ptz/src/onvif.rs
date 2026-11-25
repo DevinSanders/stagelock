@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Utc;
-use rand::RngCore;
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};

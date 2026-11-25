@@ -1,20 +1,53 @@
 import {
   InstanceBase,
   InstanceStatus,
-  runEntrypoint,
   combineRgb,
   type SomeCompanionConfigField,
   type CompanionActionDefinitions,
   type CompanionFeedbackDefinitions,
   type CompanionPresetDefinitions,
-  type CompanionVariableDefinition,
+  type CompanionPresetSection,
+  type CompanionStaticUpgradeScript,
+  type CompanionVariableDefinitions,
 } from "@companion-module/base";
 import WebSocket from "ws";
 
-interface ModuleConfig {
+type ModuleConfig = {
   host: string;
   port: number;
-}
+};
+
+type ActionsSchema = {
+  toggle_track: { options: { camera_index: number } };
+  set_framing_preset: { options: { camera_index: number; preset: string } };
+  set_thirds: { options: { camera_index: number; thirds: string } };
+  one_push_af: { options: { camera_index: number } };
+  recall_preset: { options: { camera_index: number; slot: number } };
+  toggle_ndi: { options: { camera_index: number } };
+  dial_zoom: { options: { camera_index: number; delta: number } };
+  dial_exposure: { options: { camera_index: number; delta: number } };
+  vmix_cut: { options: { input: string } };
+  vmix_fade: { options: { input: string; duration_ms: number } };
+};
+
+type FeedbacksSchema = {
+  tracking_state: { type: "boolean"; options: { camera_index: number } };
+  tally_state: { type: "boolean"; options: { camera_index: number } };
+  framing_preset: { type: "boolean"; options: { camera_index: number; preset: string } };
+  ndi_active: { type: "boolean"; options: { camera_index: number } };
+};
+
+type VariablesSchema = {
+  [variableId: string]: string | number | undefined;
+};
+
+export type ModuleSchema = {
+  config: ModuleConfig;
+  secrets: undefined;
+  actions: ActionsSchema;
+  feedbacks: FeedbacksSchema;
+  variables: VariablesSchema;
+};
 
 interface TelemetryCam {
   camera_id: string;
@@ -27,7 +60,9 @@ interface TelemetryCam {
   focus_sharpness: number;
 }
 
-class StageLockInstance extends InstanceBase<ModuleConfig> {
+export const UpgradeScripts: CompanionStaticUpgradeScript<ModuleConfig, undefined>[] = [];
+
+export default class StageLockInstance extends InstanceBase<ModuleSchema> {
   private config: ModuleConfig = { host: "127.0.0.1", port: 8765 };
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -41,7 +76,7 @@ class StageLockInstance extends InstanceBase<ModuleConfig> {
 
     this.setActionDefinitions(this.buildActions());
     this.setFeedbackDefinitions(this.buildFeedbacks());
-    this.setPresetDefinitions(this.buildPresets());
+    this.setPresetDefinitions(this.buildPresetSections(), this.buildPresets());
     this.setVariableDefinitions(this.buildVariables());
 
     this.connectWebSocket();
@@ -133,21 +168,19 @@ class StageLockInstance extends InstanceBase<ModuleConfig> {
     });
   }
 
-  private buildVariables(): CompanionVariableDefinition[] {
-    const vars: CompanionVariableDefinition[] = [];
+  private buildVariables(): CompanionVariableDefinitions<VariablesSchema> {
+    const vars: CompanionVariableDefinitions<VariablesSchema> = {};
     for (let i = 1; i <= 4; i++) {
-      vars.push(
-        { variableId: `cam_${i}_track`, name: `Camera ${i} Tracking State` },
-        { variableId: `cam_${i}_preset`, name: `Camera ${i} Framing Preset` },
-        { variableId: `cam_${i}_focus_pct`, name: `Camera ${i} Focus Sharpness %` },
-        { variableId: `cam_${i}_ndi`, name: `Camera ${i} NDI Output Active` }
-      );
+      vars[`cam_${i}_track`] = { name: `Camera ${i} Tracking State` };
+      vars[`cam_${i}_preset`] = { name: `Camera ${i} Framing Preset` };
+      vars[`cam_${i}_focus_pct`] = { name: `Camera ${i} Focus Sharpness %` };
+      vars[`cam_${i}_ndi`] = { name: `Camera ${i} NDI Output Active` };
     }
     return vars;
   }
 
   private updateVariables(): void {
-    const values: Record<string, string | number> = {};
+    const values: Partial<VariablesSchema> = {};
     this.cameras.slice(0, 4).forEach((cam, idx) => {
       const n = idx + 1;
       values[`cam_${n}_track`] = cam.tracking_state.toUpperCase();
@@ -158,10 +191,10 @@ class StageLockInstance extends InstanceBase<ModuleConfig> {
     this.setVariableValues(values);
   }
 
-  private buildActions(): CompanionActionDefinitions {
+  private buildActions(): CompanionActionDefinitions<ActionsSchema> {
     const camField = {
       type: "number" as const,
-      id: "camera_index",
+      id: "camera_index" as const,
       label: "Camera Index (1-based)",
       default: 1,
       min: 1,
@@ -314,10 +347,10 @@ class StageLockInstance extends InstanceBase<ModuleConfig> {
     };
   }
 
-  private buildFeedbacks(): CompanionFeedbackDefinitions {
+  private buildFeedbacks(): CompanionFeedbackDefinitions<FeedbacksSchema> {
     const camField = {
       type: "number" as const,
-      id: "camera_index",
+      id: "camera_index" as const,
       label: "Camera Index (1-based)",
       default: 1,
       min: 1,
@@ -381,48 +414,70 @@ class StageLockInstance extends InstanceBase<ModuleConfig> {
     };
   }
 
-  private buildPresets(): CompanionPresetDefinitions {
+  private buildPresetSections(): CompanionPresetSection<ModuleSchema>[] {
+    return [
+      {
+        id: "cam1_auto_track",
+        name: "Camera 1 Auto-Track",
+        definitions: ["cam1_track_toggle"],
+      },
+      {
+        id: "cam1_framing",
+        name: "Camera 1 Framing",
+        definitions: ["cam1_closeup", "cam1_waistup", "cam1_full"],
+      },
+    ];
+  }
+
+  private buildPresets(): CompanionPresetDefinitions<ModuleSchema> {
+    const trackingActiveStyle = { bgcolor: combineRgb(22, 163, 74), color: combineRgb(255, 255, 255) };
+    const framingActiveStyle = { bgcolor: combineRgb(2, 132, 199), color: combineRgb(255, 255, 255) };
+
     return {
       cam1_track_toggle: {
-        type: "button",
-        category: "Camera 1 Auto-Track",
+        type: "simple",
         name: "Toggle Auto-Track",
         style: { text: "CAM 1\\nTRACK", size: "14", color: combineRgb(255, 255, 255), bgcolor: combineRgb(30, 41, 59) },
         steps: [{ down: [{ actionId: "toggle_track", options: { camera_index: 1 } }], up: [] }],
-        feedbacks: [{ feedbackId: "tracking_state", options: { camera_index: 1 } }],
+        feedbacks: [{ feedbackId: "tracking_state", options: { camera_index: 1 }, style: trackingActiveStyle }],
       },
       cam1_closeup: {
-        type: "button",
-        category: "Camera 1 Framing",
+        type: "simple",
         name: "Close-Up",
         style: { text: "CLOSE\\nUP", size: "14", color: combineRgb(255, 255, 255), bgcolor: combineRgb(30, 41, 59) },
         steps: [
           { down: [{ actionId: "set_framing_preset", options: { camera_index: 1, preset: "close_up" } }], up: [] },
         ],
-        feedbacks: [{ feedbackId: "framing_preset", options: { camera_index: 1, preset: "close_up" } }],
+        feedbacks: [
+          { feedbackId: "framing_preset", options: { camera_index: 1, preset: "close_up" }, style: framingActiveStyle },
+        ],
       },
       cam1_waistup: {
-        type: "button",
-        category: "Camera 1 Framing",
+        type: "simple",
         name: "Waist Up",
         style: { text: "WAIST\\nUP", size: "14", color: combineRgb(255, 255, 255), bgcolor: combineRgb(30, 41, 59) },
         steps: [
           { down: [{ actionId: "set_framing_preset", options: { camera_index: 1, preset: "waist_up" } }], up: [] },
         ],
-        feedbacks: [{ feedbackId: "framing_preset", options: { camera_index: 1, preset: "waist_up" } }],
+        feedbacks: [
+          { feedbackId: "framing_preset", options: { camera_index: 1, preset: "waist_up" }, style: framingActiveStyle },
+        ],
       },
       cam1_full: {
-        type: "button",
-        category: "Camera 1 Framing",
+        type: "simple",
         name: "Full Height",
         style: { text: "FULL\\nHEIGHT", size: "14", color: combineRgb(255, 255, 255), bgcolor: combineRgb(30, 41, 59) },
         steps: [
           { down: [{ actionId: "set_framing_preset", options: { camera_index: 1, preset: "full_height" } }], up: [] },
         ],
-        feedbacks: [{ feedbackId: "framing_preset", options: { camera_index: 1, preset: "full_height" } }],
+        feedbacks: [
+          {
+            feedbackId: "framing_preset",
+            options: { camera_index: 1, preset: "full_height" },
+            style: framingActiveStyle,
+          },
+        ],
       },
     };
   }
 }
-
-runEntrypoint(StageLockInstance, []);

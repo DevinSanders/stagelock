@@ -15,7 +15,7 @@
   "runtime": {
     "type": "node22",
     "api": "nodejs-ipc",
-    "apiVersion": "1.11.0",
+    "apiVersion": "2.2.2",
     "entrypoint": "../dist/main.js"
   },
   "legacyIds": ["videocontroller-ptz"],

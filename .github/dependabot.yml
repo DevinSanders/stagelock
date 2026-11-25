@@ -1,8 +1,6 @@
 version: 2
 
 # Consolidate all Cargo, pnpm/npm, and GitHub Actions updates into a single weekly PR.
-# Breaking major updates for Cargo and npm are ignored here so automated PRs stay green
-# until majors are migrated intentionally.
 multi-ecosystem-groups:
   all-dependencies:
     schedule:
@@ -17,10 +15,6 @@ updates:
     multi-ecosystem-group: "all-dependencies"
     patterns:
       - "*"
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-major"
 
   # Frontend Tauri 2 + React UI and Bitfocus Companion module (pnpm workspace).
   # Root "/" alone resolves all pnpm-workspace.yaml packages without duplicate PRs.
@@ -29,10 +23,6 @@ updates:
     multi-ecosystem-group: "all-dependencies"
     patterns:
       - "*"
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-major"
 
   # Pinned versions of GitHub Actions in workflows.
   - package-ecosystem: "github-actions"
