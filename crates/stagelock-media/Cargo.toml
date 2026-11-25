@@ -13,7 +13,7 @@ gst-native = ["dep:gstreamer", "dep:gstreamer-app"]
 anyhow.workspace = true
 bytes.workspace = true
 chrono.workspace = true
-jpeg-encoder = "0.6"
+jpeg-encoder = "0.7"
 libloading.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,5 +23,5 @@ uuid.workspace = true
 stagelock-core = { path = "../stagelock-core" }
 stagelock-vision = { path = "../stagelock-vision" }
 
-gstreamer = { version = "0.23", optional = true }
-gstreamer-app = { version = "0.23", optional = true }
+gstreamer = { version = "0.25", optional = true }
+gstreamer-app = { version = "0.25", optional = true }
